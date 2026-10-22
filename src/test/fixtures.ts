@@ -1,4 +1,5 @@
 import type { LearningBundle } from "../types";
+import type { InterviewReport } from "../features/interview/types";
 
 export function makeBundle(): LearningBundle {
   return {
@@ -104,6 +105,62 @@ export function makeBundle(): LearningBundle {
         explanation:
           "Validation catches invalid field names and types close to the integration boundary.",
       },
+    ],
+  };
+}
+
+export function makeInterviewReport(): InterviewReport {
+  return {
+    summary:
+      "The candidate communicates a structured approach and connects technical choices to evidence. More explicit failure handling would make future answers easier to evaluate.",
+    dimensions: [
+      {
+        id: "problem-solving",
+        label: "Problem solving",
+        score: 4,
+        evidence: "The answer starts with the main data structure and expected complexity.",
+        improvement: "State the tie-breaking rule before choosing an implementation.",
+      },
+      {
+        id: "correctness",
+        label: "Technical correctness",
+        score: 3,
+        evidence: "The approach is plausible but does not cover every boundary case.",
+        improvement: "List empty, duplicate, and tie cases explicitly.",
+      },
+      {
+        id: "debugging",
+        label: "Debugging and testing",
+        score: 4,
+        evidence: "The response proposes a reproduction and a focused test.",
+        improvement: "Connect each log or test to the hypothesis it confirms.",
+      },
+      {
+        id: "system-design",
+        label: "System design",
+        score: 3,
+        evidence: "The answer covers storage and synchronization at a high level.",
+        improvement: "Describe the conflict resolution contract and retry behavior.",
+      },
+      {
+        id: "communication",
+        label: "Communication",
+        score: 4,
+        evidence: "The response prioritizes impact and next steps.",
+        improvement: "Add a short decision checkpoint for the product owner.",
+      },
+    ],
+    strengths: [
+      "Structured technical reasoning",
+      "Clear explanation of tests and evidence",
+    ],
+    improvements: [
+      "Cover failure paths more explicitly",
+      "Quantify tradeoffs when possible",
+    ],
+    nextPractice: [
+      "Retry one answer using a 30-second structure",
+      "Write a conflict-resolution example for concurrent progress updates",
     ],
   };
 }

@@ -181,4 +181,26 @@ describe("learning demo workflow", () => {
       screen.getByRole("heading", { name: "Reliable Software Foundations" }),
     ).toBeInTheDocument();
   });
+
+  it("opens the shared key dialog when Live interview has no key", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      screen.getByRole("button", { name: /mock interview/i }),
+    );
+    expect(
+      screen.getByRole("heading", { name: /practice the thinking/i }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /connect key & start/i }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Bring your own API key" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /practice the thinking/i }),
+    ).toBeInTheDocument();
+  });
 });

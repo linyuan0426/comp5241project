@@ -23,6 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import InterviewModule from "./features/interview/InterviewModule";
 import { generateLearningBundle, testDeepSeekConnection } from "./lib/deepseek";
 import {
   getNextQuestionIndex,
@@ -52,6 +53,8 @@ const STEPS: Array<{ id: Step; label: string; icon: typeof UploadCloud }> = [
   { id: "quiz", label: "Quiz", icon: CircleHelp },
   { id: "progress", label: "Progress", icon: Target },
 ];
+
+type WorkspaceSection = "learning" | "interview";
 
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
@@ -567,6 +570,9 @@ function ProgressView({
 }
 
 export default function App() {
+  const [section, setSection] = useState<WorkspaceSection>(() =>
+    window.location.hash === "#interview" ? "interview" : "learning",
+  );
   const [learning, setLearning] = useState<LearningState | null>(() => loadLearningState());
   const [view, setView] = useState<Step>(() => learning?.currentStep ?? "upload");
   const [draft, setDraft] = useState<ExtractedDocument | null>(null);
@@ -603,6 +609,7 @@ export default function App() {
   }
 
   function navigate(step: Step) {
+    setSection("learning");
     if (step === "upload") {
       if (!learning) setView("upload");
       return;
@@ -616,6 +623,12 @@ export default function App() {
     const nextState = { ...learning, currentStep: step };
     commitLearning(nextState);
     setView(step);
+  }
+
+  function switchSection(next: WorkspaceSection) {
+    setSection(next);
+    const nextHash = next === "interview" ? "#interview" : "#learning";
+    window.history.replaceState(null, "", nextHash);
   }
 
   async function processFile(file: File) {
@@ -823,10 +836,11 @@ export default function App() {
             return (
               <button
                 aria-current={view === step.id ? "step" : undefined}
-                className={view === step.id ? "active" : ""}
+                className={section === "learning" && view === step.id ? "active" : ""}
                 disabled={!available}
                 key={step.id}
                 onClick={() => {
+                  switchSection("learning");
                   if (step.id === "upload") {
                     if (learning) requestNewDocument();
                     else setView("upload");
@@ -847,15 +861,20 @@ export default function App() {
         </nav>
 
         <div className="future-nav">
-          <p className="nav-label">Coming next</p>
-          <div className="future-item">
-            <Code2 size={18} />
-            <div><span>Virtual Workspace</span><small>AI coding lab</small></div>
-            <LockKeyhole size={14} />
-          </div>
-          <div className="future-item">
+          <p className="nav-label">Explore</p>
+          <button
+            aria-current={section === "interview" ? "page" : undefined}
+            className={`future-item available ${section === "interview" ? "active" : ""}`}
+            onClick={() => switchSection("interview")}
+            type="button"
+          >
             <BriefcaseBusiness size={18} />
             <div><span>Mock Interview</span><small>Practice with AI</small></div>
+            <ChevronRight size={14} />
+          </button>
+          <div className="future-item locked">
+            <Code2 size={18} />
+            <div><span>Virtual Workspace</span><small>AI coding lab</small></div>
             <LockKeyhole size={14} />
           </div>
         </div>
@@ -880,9 +899,15 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-context">
             <span className="mobile-brand"><GraduationCap size={20} /> Pathwise</span>
-            <span className="breadcrumb">Learning Studio</span>
+            <span className="breadcrumb">
+              {section === "interview" ? "Practice" : "Learning Studio"}
+            </span>
             <ChevronRight size={14} />
-            <strong>{STEPS.find((step) => step.id === view)?.label}</strong>
+            <strong>
+              {section === "interview"
+                ? "Mock Interview"
+                : STEPS.find((step) => step.id === view)?.label}
+            </strong>
           </div>
           <button className="key-status" onClick={() => openKeyDialog(false)} type="button">
             <span className={apiKeyValue ? "key-dot connected" : "key-dot"} />
@@ -892,6 +917,13 @@ export default function App() {
         </header>
 
         <main className="main-content">
+          {section === "interview" ? (
+            <InterviewModule
+              apiKey={apiKeyValue}
+              onRequestApiKey={() => openKeyDialog(false)}
+            />
+          ) : (
+            <>
           {view === "upload" ? (
             <div className="upload-page">
               {learning ? (
@@ -1077,6 +1109,8 @@ export default function App() {
               onReviewQuiz={openQuiz}
             />
           ) : null}
+            </>
+          )}
         </main>
       </div>
 
