@@ -1366,3 +1366,74 @@
     width: 100%;
   }
 }
+
+.task-interview-back {
+  margin-bottom: 12px;
+}
+
+.task-interview-brief {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.task-interview-brief summary {
+  color: var(--blue-deep);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.task-interview-brief p,
+.task-interview-brief ul {
+  margin: 8px 0 0;
+}
+
+.task-interview-brief ul {
+  padding-left: 18px;
+  white-space: pre-wrap;
+}
+
+.interview-answer-comparison {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.interview-answer-comparison > div {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--canvas);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.interview-revision-form {
+  margin-top: 12px;
+}
+
+.interview-revision-form label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 650;
+}
+
+.interview-revision-form textarea {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.interview-revision-form .button + .button {
+  margin-left: 8px;
+}

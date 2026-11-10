@@ -34,6 +34,7 @@ export type DocumentMeta = {
   name: string;
   pageCount: number;
   characterCount: number;
+  filePath?: string;
 };
 
 export type LearningState = {
@@ -45,5 +46,12 @@ export type LearningState = {
 
 export type ExtractedDocument = {
   meta: DocumentMeta;
+  pages: DocumentPage[];
+};
+
+export type DocumentPage = {
   text: string;
+  images: string[];
+  recognizedText?: string;
+  skippedImages?: number;
 };

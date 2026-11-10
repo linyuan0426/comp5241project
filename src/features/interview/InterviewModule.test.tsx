@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeInterviewReport } from "../../test/fixtures";
 import InterviewModule from "./InterviewModule";
 import { INTERVIEW_QUESTIONS } from "./questions";
-import { INTERVIEW_STORAGE_KEY } from "./storage";
+import { INTERVIEW_STORAGE_KEY, loadInterviewSession } from "./storage";
+import type { InterviewTask } from "./types";
 
 const { followUpMock, reportMock } = vi.hoisted(() => ({
   followUpMock: vi.fn(),
@@ -32,10 +33,28 @@ describe("interview module", () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
   });
 
+  it("offers the latest practice separately even when its decisions match a saved interview", async () => {
+    const user = userEvent.setup();
+    const task: InterviewTask = {
+      kind: "scenario", attemptId: "1", title: "the checkout challenge",
+      decision: "Clamp the total at zero", result: "The boundary case passes", evidence: ["Tested an oversized discount"],
+    };
+    const first = render(<InterviewModule task={task} />);
+    await user.click(screen.getByRole("button", { name: "Start demo interview" }));
+    first.unmount();
+
+    render(<InterviewModule task={{ ...task, attemptId: "2" }} />);
+    expect(screen.getByRole("button", { name: "Continue saved interview" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Use latest practice" }));
+    expect(loadInterviewSession("scenario")?.task?.attemptId).toBe("1");
+    await user.click(screen.getByRole("button", { name: "Start demo interview" }));
+    expect(loadInterviewSession("scenario")?.task?.attemptId).toBe("2");
+  });
+
   it("completes, persists, and restarts the offline Demo interview", async () => {
     const user = userEvent.setup();
     const firstRender = render(
-      <InterviewModule apiKey="" onRequestApiKey={vi.fn()} />,
+      <InterviewModule canUseLive={false} />,
     );
 
     await user.click(screen.getByRole("button", { name: /start demo interview/i }));
@@ -67,7 +86,7 @@ describe("interview module", () => {
     expect(reportMock).not.toHaveBeenCalled();
 
     firstRender.unmount();
-    render(<InterviewModule apiKey="" onRequestApiKey={vi.fn()} />);
+    render(<InterviewModule canUseLive={false} />);
     expect(
       screen.getByRole("heading", { name: "Your learning report is ready." }),
     ).toBeInTheDocument();
@@ -81,7 +100,7 @@ describe("interview module", () => {
 
   it("completes a live interview with four follow-ups and an AI report", async () => {
     const user = userEvent.setup();
-    render(<InterviewModule apiKey="sk-live" onRequestApiKey={vi.fn()} />);
+    render(<InterviewModule canUseLive />);
 
     await user.click(screen.getByRole("button", { name: /start live interview/i }));
 
@@ -113,7 +132,7 @@ describe("interview module", () => {
     followUpMock.mockReset();
     followUpMock.mockRejectedValueOnce(new Error("DeepSeek is unavailable."));
     const user = userEvent.setup();
-    render(<InterviewModule apiKey="sk-live" onRequestApiKey={vi.fn()} />);
+    render(<InterviewModule canUseLive />);
 
     await user.click(screen.getByRole("button", { name: /start live interview/i }));
     await user.type(screen.getByLabelText("Your answer"), longAnswer);

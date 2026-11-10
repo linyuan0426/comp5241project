@@ -377,7 +377,7 @@ p {
   display: none;
 }
 
-.key-status {
+.account-status {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -393,21 +393,8 @@ p {
   cursor: pointer;
 }
 
-.key-status:hover {
+.account-status:hover {
   border-color: #b8c9df;
-}
-
-.key-dot {
-  width: 7px;
-  height: 7px;
-  background: #e3a032;
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px #fff4dc;
-}
-
-.key-dot.connected {
-  background: #0da177;
-  box-shadow: 0 0 0 3px #e3f8f1;
 }
 
 .main-content {
@@ -1648,7 +1635,7 @@ p {
   }
 }
 
-.key-dialog {
+.account-dialog {
   position: relative;
   width: min(100%, 470px);
   padding: 29px;
@@ -1684,103 +1671,11 @@ p {
   cursor: pointer;
 }
 
-.dialog-icon {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 18px;
-  place-items: center;
-  color: #1766d8;
-  background: #eaf3ff;
-  border: 1px solid #d3e5fb;
-  border-radius: 13px;
-}
-
-.key-dialog h2 {
+.account-dialog h2 {
   margin: 0 0 7px;
   color: #142d51;
   font-size: 23px;
   letter-spacing: -0.03em;
-}
-
-.dialog-copy {
-  margin: 0 0 19px;
-  color: #75849a;
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.field-label {
-  display: block;
-  margin-bottom: 6px;
-  color: #445b78;
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.key-input-wrap {
-  position: relative;
-}
-
-.key-input-wrap input {
-  width: 100%;
-  height: 44px;
-  padding: 0 44px 0 13px;
-  color: #213854;
-  font-size: 12px;
-  background: #fbfcfe;
-  border: 1px solid #d9e2ee;
-  border-radius: 9px;
-}
-
-.key-visibility {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: #7c8da3;
-  background: transparent;
-  border: 0;
-  border-radius: 7px;
-  cursor: pointer;
-}
-
-.key-visibility:hover {
-  background: #eef3f8;
-}
-
-.inline-message {
-  margin: 9px 0 0;
-  padding: 9px 10px;
-  font-size: 10px;
-  line-height: 1.45;
-  border-radius: 8px;
-}
-
-.inline-message.error-message {
-  color: #9c3447;
-  background: #fff1f3;
-  border: 1px solid #f1ccd2;
-}
-
-.inline-message.success-message {
-  color: #176b55;
-  background: #eafaf4;
-  border: 1px solid #bfe9dc;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 19px;
-}
-
-.key-dialog > .text-button {
-  margin-top: 13px;
 }
 
 @media (max-width: 1050px) {
@@ -1900,20 +1795,13 @@ p {
     display: none;
   }
 
-  .key-status span:last-child {
-    display: none;
-  }
-
-  .key-status {
-    width: 38px;
-    height: 36px;
+  .account-status {
     justify-content: center;
-    padding: 0;
+    flex-shrink: 0;
   }
 
-  .key-status .key-dot {
-    position: absolute;
-    margin: -21px 0 0 21px;
+  .account-status span:nth-of-type(2) {
+    display: none;
   }
 
   .quiz-layout {
@@ -2073,12 +1961,11 @@ p {
     gap: 7px;
   }
 
-  .dialog-actions {
-    flex-direction: column-reverse;
-  }
+}
 
-  .dialog-actions .button {
-    width: 100%;
+@media (max-width: 390px) {
+  .sidebar .brand strong {
+    display: none;
   }
 }
 

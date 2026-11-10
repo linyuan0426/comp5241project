@@ -1,13 +1,4 @@
-import type { InterviewQuestionId } from "./types";
-
-export type InterviewQuestion = {
-  id: InterviewQuestionId;
-  topic: string;
-  prompt: string;
-  demoFollowUp: string;
-  signals: string[];
-  improvement: string;
-};
+import type { InterviewQuestion, InterviewSession, InterviewTask } from "./types.ts";
 
 export const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
   {
@@ -97,3 +88,33 @@ export const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
       "Make impact, ownership, immediate containment, and the next decision point explicit to the people affected.",
   },
 ];
+
+export function getSessionQuestions(session: InterviewSession) {
+  return session.questions ?? INTERVIEW_QUESTIONS;
+}
+
+export function createTaskQuestions(task: InterviewTask): InterviewQuestion[] {
+  const workspace = task.kind === "workspace";
+  return [
+    {
+      id: "coding-reasoning",
+      topic: "Explain your decision",
+      prompt: `In ${task.title}, your recorded decision was “${task.decision}”. Explain the requirement behind that choice and one trade-off you considered.`,
+      demoFollowUp: workspace
+        ? "If a teammate proposed a broader change to the page, what would you keep in this commit and why?"
+        : "Why would making every total positive fail to satisfy the discount requirement?",
+      signals: workspace ? ["label", "scope", "requirement", "review", "commit"] : ["price", "discount", "zero", "requirement", "boundary"],
+      improvement: "Name the requirement, explain your choice, and contrast it with a plausible alternative.",
+    },
+    {
+      id: "debugging",
+      topic: "Verify the outcome",
+      prompt: `The practice recorded this outcome: “${task.result}” How would you verify the change on a real project, and what would that evidence tell you?`,
+      demoFollowUp: workspace
+        ? "If the staged file differs from what you just checked, what would you verify before committing?"
+        : "Which inputs would you use immediately below, at, and above the price, and what totals would you expect?",
+      signals: workspace ? ["test", "check", "stage", "diff", "commit", "push"] : ["test", "discount", "boundary", "expected", "zero", "price"],
+      improvement: "Give a specific check, its expected result, and what you would do if the result differed.",
+    },
+  ];
+}

@@ -1,9 +1,10 @@
-import { INTERVIEW_QUESTIONS } from "./questions";
+import { getSessionQuestions, INTERVIEW_QUESTIONS } from "./questions";
 import type {
   InterviewAnswer,
   InterviewDimensionId,
   InterviewReport,
   InterviewSession,
+  InterviewQuestion,
 } from "./types";
 
 const DIMENSION_LABELS: Record<InterviewDimensionId, string> = {
@@ -66,39 +67,44 @@ function dimensionScore(
   return rubricScore(text, signals);
 }
 
-export function createDemoFollowUp(questionIndex: number) {
-  return INTERVIEW_QUESTIONS[questionIndex].demoFollowUp;
+export function createDemoFollowUp(questionIndex: number, questions: InterviewQuestion[] = INTERVIEW_QUESTIONS) {
+  return questions[questionIndex].demoFollowUp;
 }
 
 export function createDemoReport(session: InterviewSession): InterviewReport {
-  const first = INTERVIEW_QUESTIONS[0].signals;
-  const second = INTERVIEW_QUESTIONS[1].signals;
-  const third = INTERVIEW_QUESTIONS[2].signals;
-  const fourth = INTERVIEW_QUESTIONS[3].signals;
+  const questions = getSessionQuestions(session);
+  const designIndex = session.task ? 0 : 2;
+  const communicationIndex = session.task ? 1 : 3;
+  const first = questions[0].signals;
+  const second = questions[1].signals;
+  const design = questions[designIndex].signals;
+  const communication = questions[communicationIndex].signals;
 
   const scores: Record<InterviewDimensionId, 1 | 2 | 3 | 4 | 5> = {
     "problem-solving": dimensionScore(session, [0, 1], [...first, ...second]),
-    correctness: dimensionScore(session, [0, 2], [...first, ...third]),
+    correctness: dimensionScore(session, session.task ? [0, 1] : [0, 2], [...first, ...(session.task ? second : design)]),
     debugging: dimensionScore(session, [1], second),
-    "system-design": dimensionScore(session, [2], third),
-    communication: dimensionScore(session, [3], fourth),
+    "system-design": dimensionScore(session, [designIndex], design),
+    communication: dimensionScore(session, [communicationIndex], communication),
   };
 
   const evidenceMap: Record<InterviewDimensionId, number> = {
     "problem-solving": 0,
     correctness: 0,
     debugging: 1,
-    "system-design": 2,
-    communication: 3,
+    "system-design": designIndex,
+    communication: communicationIndex,
   };
 
   function dimension<T extends InterviewDimensionId>(id: T) {
     return {
       id,
-      label: DIMENSION_LABELS[id],
+      label: session.task && id === "system-design" ? "Design trade-offs" : DIMENSION_LABELS[id],
       score: scores[id],
       evidence: evidenceFor(session, evidenceMap[id]),
-      improvement: DIMENSION_IMPROVEMENTS[id],
+      improvement: session.task && id !== "communication"
+        ? questions[evidenceMap[id]].improvement
+        : DIMENSION_IMPROVEMENTS[id],
     };
   }
 

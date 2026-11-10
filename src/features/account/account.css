@@ -1,0 +1,45 @@
+.account-loading {
+  padding: 32px;
+  color: var(--muted);
+}
+
+.account-dialog h2 {
+  padding-right: 26px;
+}
+
+.account-form {
+  display: grid;
+  gap: 12px;
+}
+
+.account-form p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.account-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.account-form input {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-dialog [role="status"] {
+  margin: 12px 0;
+}
+
+.account-sync-alert {
+  color: var(--red);
+}

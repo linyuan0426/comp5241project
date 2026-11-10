@@ -3,6 +3,37 @@ import { z } from "zod";
 export type InterviewMode = "live" | "demo";
 export type InterviewPhase = "question" | "follow-up" | "report";
 
+export const interviewQuestionIds = [
+  "coding-reasoning",
+  "debugging",
+  "system-design",
+  "collaboration",
+] as const;
+
+export type InterviewQuestionId = (typeof interviewQuestionIds)[number];
+
+export const interviewTaskSchema = z.object({
+  kind: z.enum(["workspace", "scenario"]),
+  title: z.string().min(1),
+  decision: z.string().min(1),
+  result: z.string().min(1),
+  evidence: z.array(z.string()).max(6),
+  attemptId: z.string().optional(),
+});
+
+export type InterviewTask = z.infer<typeof interviewTaskSchema>;
+
+const interviewQuestionSchema = z.object({
+  id: z.enum(interviewQuestionIds),
+  topic: z.string().min(1),
+  prompt: z.string().min(1),
+  demoFollowUp: z.string().min(1),
+  signals: z.array(z.string()),
+  improvement: z.string().min(1),
+});
+
+export type InterviewQuestion = z.infer<typeof interviewQuestionSchema>;
+
 export const interviewDimensionIds = [
   "problem-solving",
   "correctness",
@@ -55,26 +86,23 @@ export const interviewSessionSchema = z.object({
   track: z.literal("general-swe"),
   level: z.literal("junior"),
   mode: z.enum(["live", "demo"]),
-  currentQuestionIndex: z.union([
-    z.literal(0),
-    z.literal(1),
-    z.literal(2),
-    z.literal(3),
-  ]),
+  currentQuestionIndex: z.number().int().min(0).max(interviewQuestionIds.length - 1),
   phase: z.enum(["question", "follow-up", "report"]),
   answers: z.array(interviewAnswerSchema).max(4),
   report: interviewReportSchema.optional(),
+  task: interviewTaskSchema.optional(),
+  questions: z.array(interviewQuestionSchema).min(2).max(interviewQuestionIds.length).optional(),
+  revisions: z.array(z.object({
+    questionId: z.string().min(1),
+    answer: z.string().min(1),
+  })).optional(),
+}).refine((session) => {
+  const questionCount = session.questions?.length ?? interviewQuestionIds.length;
+  return Boolean(session.task) === Boolean(session.questions)
+    && session.currentQuestionIndex < questionCount
+    && session.answers.length <= questionCount;
 });
 
 export type InterviewAnswer = z.infer<typeof interviewAnswerSchema>;
 export type InterviewReport = z.infer<typeof interviewReportSchema>;
 export type InterviewSession = z.infer<typeof interviewSessionSchema>;
-
-export const interviewQuestionIds = [
-  "coding-reasoning",
-  "debugging",
-  "system-design",
-  "collaboration",
-] as const;
-
-export type InterviewQuestionId = (typeof interviewQuestionIds)[number];

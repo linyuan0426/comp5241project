@@ -1,0 +1,184 @@
+.document-review {
+  padding: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.document-review-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.document-review h3,
+.document-review p {
+  margin-bottom: 6px;
+}
+
+.document-review p {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.document-review-header label,
+.review-field {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.document-review select,
+.document-review textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+}
+
+.document-review textarea {
+  width: 100%;
+  resize: vertical;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.document-review-note {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: var(--sky);
+}
+
+.upload-card > .document-review-note {
+  margin-inline: 20px;
+}
+
+.document-image-review {
+  margin: 12px 0;
+  font-size: 0.85rem;
+}
+
+.document-image-review summary,
+.scenario-history summary {
+  color: var(--blue-deep);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.document-image-review div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.document-image-review img {
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.document-recognition {
+  margin: 12px 0;
+}
+
+.document-recognition p {
+  margin: 6px 0 0;
+}
+
+.scenario-challenge {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.scenario-challenge header {
+  margin: 18px 0;
+}
+
+.scenario-challenge h1 {
+  margin-bottom: 6px;
+  font-size: clamp(1.8rem, 5vw, 2.5rem);
+  letter-spacing: -0.035em;
+}
+
+.scenario-challenge header > p:last-child,
+.scenario-panel > p:not(.eyebrow),
+.scenario-history p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.scenario-panel,
+.scenario-history {
+  margin-bottom: 14px;
+  padding: clamp(16px, 3vw, 24px);
+}
+
+.scenario-panel h2 {
+  margin-bottom: 8px;
+}
+
+.scenario-panel > .button + .button {
+  margin-left: 8px;
+}
+
+.scenario-panel pre {
+  padding: 12px;
+  overflow: auto;
+  border-radius: 7px;
+  background: var(--navy);
+  color: var(--white);
+}
+
+.scenario-options {
+  display: grid;
+  gap: 8px;
+}
+
+.scenario-options .button {
+  justify-content: start;
+  text-align: left;
+  white-space: normal;
+}
+
+.scenario-options .button[aria-pressed="true"] {
+  background: var(--sky);
+  border-color: var(--blue);
+  opacity: 1;
+}
+
+.scenario-feedback {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--sky);
+}
+
+.scenario-feedback.passes {
+  background: var(--green-soft);
+}
+
+.scenario-feedback p {
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.scenario-feedback svg {
+  vertical-align: text-bottom;
+}
+
+.scenario-history li + li {
+  margin-top: 12px;
+}
+
+.scenario-history p {
+  margin: 4px 0 0;
+}

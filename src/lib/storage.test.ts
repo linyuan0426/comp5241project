@@ -2,14 +2,10 @@ import { describe, expect, it } from "vitest";
 import { makeBundle } from "../test/fixtures";
 import type { LearningState } from "../types";
 import {
-  API_KEY_STORAGE_KEY,
   LEARNING_STORAGE_KEY,
-  clearApiKey,
   clearLearningState,
-  getApiKey,
   loadLearningState,
   saveLearningState,
-  setApiKey,
 } from "./storage";
 
 function makeState(): LearningState {
@@ -45,22 +41,12 @@ describe("local persistence", () => {
     expect(loadLearningState()).toBeNull();
   });
 
-  it("clears learning data without touching the session key", () => {
+  it("clears the study kit without clearing other progress", () => {
+    localStorage.setItem("genai-workspace-demo:v1", "{}");
     saveLearningState(makeState());
-    setApiKey("sk-session-only");
     clearLearningState();
 
     expect(loadLearningState()).toBeNull();
-    expect(getApiKey()).toBe("sk-session-only");
-  });
-
-  it("keeps the API key out of localStorage", () => {
-    setApiKey("  sk-demo-key  ");
-
-    expect(sessionStorage.getItem(API_KEY_STORAGE_KEY)).toBe("sk-demo-key");
-    expect(localStorage.getItem(API_KEY_STORAGE_KEY)).toBeNull();
-
-    clearApiKey();
-    expect(getApiKey()).toBe("");
+    expect(localStorage.getItem("genai-workspace-demo:v1")).toBe("{}");
   });
 });

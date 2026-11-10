@@ -1,0 +1,8 @@
+{
+  "framework": "vite",
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/ai.ts": { "maxDuration": 60 }
+  }
+}

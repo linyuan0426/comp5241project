@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { LearningState } from "../types";
+import { guestProgress, type ProgressStorage } from "../features/account/progress-storage";
 
 export const LEARNING_STORAGE_KEY = "genai-learning-demo:v1";
-export const API_KEY_STORAGE_KEY = "genai-learning-demo:deepseek-key";
 
 const taskSchema = z.object({
   id: z.string().min(1),
@@ -39,6 +39,7 @@ const learningStateSchema = z.object({
     name: z.string().min(1),
     pageCount: z.number().int().positive(),
     characterCount: z.number().int().positive(),
+    filePath: z.string().min(1).optional(),
   }),
   bundle: z.object({
     title: z.string().min(1),
@@ -50,9 +51,9 @@ const learningStateSchema = z.object({
   currentStep: z.enum(["plan", "quiz", "progress"]),
 });
 
-export function loadLearningState(): LearningState | null {
+export function loadLearningState(storage: ProgressStorage = guestProgress): LearningState | null {
   try {
-    const stored = localStorage.getItem(LEARNING_STORAGE_KEY);
+    const stored = storage.getItem(LEARNING_STORAGE_KEY);
     if (!stored) return null;
 
     const parsed = learningStateSchema.safeParse(JSON.parse(stored));
@@ -62,30 +63,14 @@ export function loadLearningState(): LearningState | null {
   }
 }
 
-export function saveLearningState(state: LearningState) {
+export function saveLearningState(state: LearningState, storage: ProgressStorage = guestProgress) {
   try {
-    localStorage.setItem(LEARNING_STORAGE_KEY, JSON.stringify(state));
+    storage.setItem(LEARNING_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // Persistence is optional; the in-memory demo remains usable.
   }
 }
 
-export function clearLearningState() {
-  localStorage.removeItem(LEARNING_STORAGE_KEY);
-}
-
-export function getApiKey() {
-  try {
-    return sessionStorage.getItem(API_KEY_STORAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function setApiKey(apiKey: string) {
-  sessionStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
-}
-
-export function clearApiKey() {
-  sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+export function clearLearningState(storage: ProgressStorage = guestProgress) {
+  storage.removeItem(LEARNING_STORAGE_KEY);
 }

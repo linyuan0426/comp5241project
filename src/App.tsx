@@ -6,25 +6,30 @@ import {
   ChevronRight,
   CircleHelp,
   Code2,
-  Eye,
-  EyeOff,
   FileText,
   GraduationCap,
-  KeyRound,
   ListChecks,
-  LockKeyhole,
   RotateCcw,
   Sparkles,
   Target,
-  TestTube2,
   Trophy,
   UploadCloud,
+  UserRound,
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { useRef, useState, type CSSProperties, type DragEvent } from "react";
+import type { AccountControls } from "./features/account/AccountShell";
+import { useProgressStorage } from "./features/account/progress-storage";
 import InterviewModule from "./features/interview/InterviewModule";
-import { generateLearningBundle, testDeepSeekConnection } from "./lib/deepseek";
+import { loadTaskBrief, saveTaskBrief } from "./features/interview/storage";
+import type { InterviewTask } from "./features/interview/types";
+import WorkspaceModule from "./features/workspace/WorkspaceModule";
+import DocumentReview from "./features/learning/DocumentReview";
+import ScenarioChallenge from "./features/learning/ScenarioChallenge";
+import { generateLearningBundle, recognizePageImages } from "./lib/ai";
+import { downloadCourseFile, uploadCourseFile } from "./lib/supabase";
+import { countDocumentCharacters, DOCUMENT_LIMITS, joinDocumentPages } from "./lib/document";
 import {
   getNextQuestionIndex,
   getOverallProgress,
@@ -32,15 +37,9 @@ import {
   getQuizStats,
 } from "./lib/learning";
 import { extractPdf, PdfValidationError } from "./lib/pdf";
-import {
-  clearApiKey,
-  clearLearningState,
-  getApiKey,
-  loadLearningState,
-  saveLearningState,
-  setApiKey,
-} from "./lib/storage";
+import { clearLearningState, loadLearningState, saveLearningState } from "./lib/storage";
 import type {
+  DocumentPage,
   ExtractedDocument,
   LearningBundle,
   LearningState,
@@ -54,126 +53,11 @@ const STEPS: Array<{ id: Step; label: string; icon: typeof UploadCloud }> = [
   { id: "progress", label: "Progress", icon: Target },
 ];
 
-type WorkspaceSection = "learning" | "interview";
+type WorkspaceSection = "learning" | "interview" | "workspace" | "challenge" | "task-interview";
 
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
   return "Something went wrong. Please try again.";
-}
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-type KeyDialogProps = {
-  apiKey: string;
-  error: string;
-  success: string;
-  testing: boolean;
-  pendingGeneration: boolean;
-  onClose: () => void;
-  onClear: () => void;
-  onSave: (key: string) => void;
-  onTest: (key: string) => void;
-};
-
-function KeyDialog({
-  apiKey,
-  error,
-  success,
-  testing,
-  pendingGeneration,
-  onClose,
-  onClear,
-  onSave,
-  onTest,
-}: KeyDialogProps) {
-  const [draft, setDraft] = useState(apiKey);
-  const [showKey, setShowKey] = useState(false);
-
-  useEffect(() => {
-    setDraft(apiKey);
-  }, [apiKey]);
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        aria-labelledby="key-dialog-title"
-        aria-modal="true"
-        className="key-dialog"
-        onMouseDown={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <button aria-label="Close API key settings" className="icon-button modal-close" onClick={onClose}>
-          <X size={18} />
-        </button>
-        <div className="dialog-icon">
-          <KeyRound size={24} />
-        </div>
-        <p className="eyebrow">DeepSeek connection</p>
-        <h2 id="key-dialog-title">Bring your own API key</h2>
-        <p className="dialog-copy">
-          Your key stays in this browser tab&apos;s session storage and is sent only to
-          DeepSeek. It is never saved with your learning progress.
-        </p>
-
-        <label className="field-label" htmlFor="deepseek-key">
-          API key
-        </label>
-        <div className="key-input-wrap">
-          <input
-            autoComplete="off"
-            autoFocus
-            id="deepseek-key"
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="sk-..."
-            type={showKey ? "text" : "password"}
-            value={draft}
-          />
-          <button
-            aria-label={showKey ? "Hide API key" : "Show API key"}
-            className="key-visibility"
-            onClick={() => setShowKey((current) => !current)}
-            type="button"
-          >
-            {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
-          </button>
-        </div>
-
-        {error ? <p className="inline-message error-message">{error}</p> : null}
-        {success ? <p className="inline-message success-message">{success}</p> : null}
-
-        <div className="dialog-actions">
-          <button
-            className="button secondary"
-            disabled={testing || !draft.trim()}
-            onClick={() => onTest(draft)}
-            type="button"
-          >
-            <TestTube2 size={17} />
-            {testing ? "Testing..." : "Test connection"}
-          </button>
-          <button
-            className="button primary"
-            disabled={!draft.trim()}
-            onClick={() => onSave(draft)}
-            type="button"
-          >
-            {pendingGeneration ? "Save & generate" : "Save key"}
-            <ChevronRight size={17} />
-          </button>
-        </div>
-
-        {apiKey ? (
-          <button className="text-button danger-text" onClick={onClear} type="button">
-            Clear saved key
-          </button>
-        ) : null}
-      </section>
-    </div>
-  );
 }
 
 type StagePlanProps = {
@@ -280,6 +164,7 @@ type QuizViewProps = {
   onAnswer: (questionId: string, optionIndex: 0 | 1 | 2 | 3) => void;
   onNext: (nextIndex: number) => void;
   onFinish: () => void;
+  onChallenge: () => void;
 };
 
 function QuizView({
@@ -288,6 +173,7 @@ function QuizView({
   onAnswer,
   onNext,
   onFinish,
+  onChallenge,
 }: QuizViewProps) {
   const stats = getQuizStats(bundle.quiz);
   const isComplete = questionIndex >= bundle.quiz.length;
@@ -306,6 +192,9 @@ function QuizView({
           any missed concepts before moving to your progress summary.
         </p>
         <div className="result-actions">
+          <button className="button secondary" onClick={onChallenge} type="button">
+            Try scenario challenge
+          </button>
           <button
             className="button secondary"
             onClick={() => onNext(0)}
@@ -353,6 +242,7 @@ function QuizView({
           <span>Current score</span>
           <strong>{stats.correct}/{stats.answered}</strong>
         </div>
+        <button className="text-button" onClick={onChallenge} type="button">Try scenario challenge</button>
       </aside>
 
       <section className="panel question-panel">
@@ -431,6 +321,38 @@ function QuizView({
   );
 }
 
+function CourseFileDownload({ path, name }: { path: string; name: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function download() {
+    setBusy(true);
+    setError("");
+    try {
+      const file = await downloadCourseFile(path);
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError("The original course file could not be downloaded. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <button className="button secondary" disabled={busy} onClick={() => void download()} type="button">
+        {busy ? "Downloading…" : "Download original course file"}
+      </button>
+      {error ? <p role="alert">{error}</p> : null}
+    </div>
+  );
+}
+
 type ProgressViewProps = {
   learning: LearningState;
   onReviewPlan: () => void;
@@ -463,6 +385,9 @@ function ProgressView({
             Your progress combines completed study tasks and quiz participation. Every
             answer is another chance to sharpen your understanding.
           </p>
+          {learning.document.filePath ? (
+            <CourseFileDownload path={learning.document.filePath} name={learning.document.name} />
+          ) : null}
         </div>
         <div
           aria-label={`${overall}% overall progress`}
@@ -569,20 +494,24 @@ function ProgressView({
   );
 }
 
-export default function App() {
-  const [section, setSection] = useState<WorkspaceSection>(() =>
-    window.location.hash === "#interview" ? "interview" : "learning",
-  );
-  const [learning, setLearning] = useState<LearningState | null>(() => loadLearningState());
+export default function App({ account }: { account?: AccountControls }) {
+  const storage = useProgressStorage();
+  const [section, setSection] = useState<WorkspaceSection>(() => {
+    const hash = window.location.hash;
+    if (hash === "#workspace") return "workspace";
+    if (hash === "#challenge") return "challenge";
+    if (hash === "#task-interview") return "task-interview";
+    return hash === "#interview" ? "interview" : "learning";
+  });
+  const [taskBrief, setTaskBrief] = useState(() => loadTaskBrief(storage));
+  const [learning, setLearning] = useState<LearningState | null>(() => loadLearningState(storage));
+  const latestLearning = useRef(learning);
   const [view, setView] = useState<Step>(() => learning?.currentStep ?? "upload");
   const [draft, setDraft] = useState<ExtractedDocument | null>(null);
-  const [apiKeyValue, setApiKeyValue] = useState(() => getApiKey());
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false);
-  const [pendingGeneration, setPendingGeneration] = useState(false);
-  const [keyError, setKeyError] = useState("");
-  const [keySuccess, setKeySuccess] = useState("");
-  const [testingKey, setTestingKey] = useState(false);
-  const [busy, setBusy] = useState<"parse" | "generate" | null>(null);
+  const sourceFile = useRef<File | null>(null);
+  const [pendingCourseFile, setPendingCourseFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState<"parse" | "generate" | "recognize" | "upload" | null>(null);
+  const [recognizingPage, setRecognizingPage] = useState<number | null>(null);
   const [pageError, setPageError] = useState("");
   const [dragging, setDragging] = useState(false);
   const [quizIndex, setQuizIndex] = useState(() => {
@@ -592,20 +521,10 @@ export default function App() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!keyDialogOpen) return;
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setKeyDialogOpen(false);
-    }
-
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [keyDialogOpen]);
-
   function commitLearning(next: LearningState) {
+    latestLearning.current = next;
     setLearning(next);
-    saveLearningState(next);
+    saveLearningState(next, storage);
   }
 
   function navigate(step: Step) {
@@ -627,22 +546,39 @@ export default function App() {
 
   function switchSection(next: WorkspaceSection) {
     setSection(next);
-    const nextHash = next === "interview" ? "#interview" : "#learning";
-    window.history.replaceState(null, "", nextHash);
+    window.history.replaceState(null, "", `#${next}`);
+  }
+
+  function startTaskInterview(task: InterviewTask) {
+    saveTaskBrief(task, storage);
+    setTaskBrief(task);
+    switchSection("task-interview");
+  }
+
+  function requireSignIn() {
+    if (!account || account.userId) return true;
+    account.open();
+    return false;
   }
 
   async function processFile(file: File) {
+    if (busy || !requireSignIn()) return;
     setBusy("parse");
     setPageError("");
     try {
-      const extracted = await extractPdf(file);
+      const isPptx = /\.pptx$/i.test(file.name)
+        || file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+      const extracted = isPptx
+        ? await (await import("./lib/pptx")).extractPptx(file)
+        : await extractPdf(file);
+      sourceFile.current = file;
       setDraft(extracted);
     } catch (error) {
       if (error instanceof PdfValidationError) {
         setPageError(error.message);
       } else {
         setPageError(
-          `This PDF could not be read. ${errorMessage(error)} Please try another text-based PDF.`,
+          `This document could not be read. ${errorMessage(error)} Choose a PDF or PPTX.`,
         );
       }
     } finally {
@@ -651,6 +587,7 @@ export default function App() {
   }
 
   async function loadSample() {
+    if (busy || !requireSignIn()) return;
     setBusy("parse");
     setPageError("");
     try {
@@ -661,6 +598,7 @@ export default function App() {
         type: "application/pdf",
       });
       const extracted = await extractPdf(file);
+      sourceFile.current = file;
       setDraft(extracted);
     } catch (error) {
       setPageError(
@@ -680,69 +618,37 @@ export default function App() {
     if (file) void processFile(file);
   }
 
-  function openKeyDialog(forGeneration = false) {
-    setPendingGeneration(forGeneration);
-    setKeyError("");
-    setKeySuccess("");
-    setKeyDialogOpen(true);
-  }
-
-  function saveKey(key: string) {
-    const trimmed = key.trim();
-    setApiKey(trimmed);
-    setApiKeyValue(trimmed);
-    setKeyDialogOpen(false);
-    setPageError("");
-
-    if (pendingGeneration) {
-      void generateKit(trimmed);
-    }
-    setPendingGeneration(false);
-  }
-
-  async function testKey(key: string) {
-    setTestingKey(true);
-    setKeyError("");
-    setKeySuccess("");
-    try {
-      await testDeepSeekConnection(key);
-      setKeySuccess("Connection successful. Your key is ready.");
-    } catch (error) {
-      setKeyError(errorMessage(error));
-    } finally {
-      setTestingKey(false);
-    }
-  }
-
-  function handleClearKey() {
-    clearApiKey();
-    setApiKeyValue("");
-    setKeyError("");
-    setKeySuccess("Saved key cleared from this browser session.");
-  }
-
   function requestGeneration() {
-    if (!draft) return;
-    if (!apiKeyValue) {
-      openKeyDialog(true);
-      return;
-    }
-    void generateKit(apiKeyValue);
+    if (!draft || busy || !requireSignIn()) return;
+    void generateKit();
   }
 
-  async function generateKit(key: string) {
-    if (!draft) return;
+  async function generateKit() {
+    if (!draft || busy) return;
+    const characterCount = countDocumentCharacters(draft.pages);
+    if (characterCount === 0 || characterCount > DOCUMENT_LIMITS.maxCharacters) return;
     setBusy("generate");
     setPageError("");
     try {
-      const bundle = await generateLearningBundle(key, draft.text);
+      const bundle = await generateLearningBundle(joinDocumentPages(draft.pages));
+      let filePath: string | undefined;
+      const file = sourceFile.current;
+      if (account?.userId && file) {
+        try {
+          filePath = await uploadCourseFile(account.userId, file);
+        } catch {
+          // The learner can retry the file upload without regenerating the study kit.
+        }
+      }
       const next: LearningState = {
         version: 1,
-        document: draft.meta,
+        document: { ...draft.meta, characterCount, filePath },
         bundle,
         currentStep: "plan",
       };
       commitLearning(next);
+      setPendingCourseFile(account?.userId && !filePath ? file : null);
+      sourceFile.current = null;
       setDraft(null);
       setQuizIndex(0);
       setView("plan");
@@ -750,6 +656,50 @@ export default function App() {
       setPageError(errorMessage(error));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function retryCourseUpload() {
+    if (busy || !account?.userId || !pendingCourseFile) return;
+    setBusy("upload");
+    try {
+      const filePath = await uploadCourseFile(account.userId, pendingCourseFile);
+      const current = latestLearning.current;
+      if (current) commitLearning({ ...current, document: { ...current.document, filePath } });
+      setPendingCourseFile(null);
+    } catch {
+      // Keep the original file available for another retry.
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function editPage(index: number, patch: Partial<DocumentPage>) {
+    setDraft((current) => current && {
+      ...current,
+      pages: current.pages.map((page, pageIndex) => pageIndex === index ? { ...page, ...patch } : page),
+    });
+  }
+
+  function requestRecognition(index: number) {
+    if (busy || !requireSignIn()) return;
+    void recognizeImages(index);
+  }
+
+  async function recognizeImages(index: number) {
+    const page = draft?.pages[index];
+    if (!page?.images.length || busy) return;
+    setBusy("recognize");
+    setRecognizingPage(index);
+    setPageError("");
+    try {
+      const recognizedText = await recognizePageImages(page.images, page.text);
+      editPage(index, { recognizedText });
+    } catch (error) {
+      setPageError(`Page ${index + 1} image recognition failed. ${errorMessage(error)}`);
+    } finally {
+      setBusy(null);
+      setRecognizingPage(null);
     }
   }
 
@@ -785,9 +735,12 @@ export default function App() {
   }
 
   function resetDemo() {
-    if (!window.confirm("Reset the demo and clear all saved learning progress?")) return;
-    clearLearningState();
+    if (busy || !window.confirm("Reset the demo and clear all saved learning progress?")) return;
+    clearLearningState(storage);
+    latestLearning.current = null;
     setLearning(null);
+    setPendingCourseFile(null);
+    sourceFile.current = null;
     setDraft(null);
     setPageError("");
     setQuizIndex(0);
@@ -796,9 +749,10 @@ export default function App() {
   }
 
   function requestNewDocument() {
-    if (!window.confirm("Uploading a new PDF will replace the current learning progress. Continue?")) {
+    if (busy || !window.confirm("Generating from a new document will replace the current learning progress. Continue?")) {
       return;
     }
+    sourceFile.current = null;
     setDraft(null);
     setPageError("");
     setView("upload");
@@ -814,6 +768,10 @@ export default function App() {
 
   const currentStepIndex = STEPS.findIndex((step) => step.id === view);
   const planSnapshot = learning ? getPlanProgress(learning.bundle) : null;
+  const reviewedCharacters = draft ? countDocumentCharacters(draft.pages) : 0;
+  const characterLimitExceeded = reviewedCharacters > DOCUMENT_LIMITS.maxCharacters;
+  const inInterview = section === "interview" || section === "task-interview";
+  const interviewTask = section === "task-interview" ? taskBrief : null;
 
   return (
     <div className="app-shell">
@@ -835,7 +793,8 @@ export default function App() {
               index < currentStepIndex && (step.id !== "plan" || (planSnapshot?.percent ?? 0) === 100);
             return (
               <button
-                aria-current={view === step.id ? "step" : undefined}
+                aria-current={section === "learning" && view === step.id ? "step" : undefined}
+                aria-label={step.label}
                 className={section === "learning" && view === step.id ? "active" : ""}
                 disabled={!available}
                 key={step.id}
@@ -864,6 +823,7 @@ export default function App() {
           <p className="nav-label">Explore</p>
           <button
             aria-current={section === "interview" ? "page" : undefined}
+            aria-label="Mock Interview"
             className={`future-item available ${section === "interview" ? "active" : ""}`}
             onClick={() => switchSection("interview")}
             type="button"
@@ -872,11 +832,17 @@ export default function App() {
             <div><span>Mock Interview</span><small>Practice with AI</small></div>
             <ChevronRight size={14} />
           </button>
-          <div className="future-item locked">
+          <button
+            aria-current={section === "workspace" ? "page" : undefined}
+            aria-label="Virtual Workspace"
+            className={`future-item available ${section === "workspace" ? "active" : ""}`}
+            onClick={() => switchSection("workspace")}
+            type="button"
+          >
             <Code2 size={18} />
-            <div><span>Virtual Workspace</span><small>AI coding lab</small></div>
-            <LockKeyhole size={14} />
-          </div>
+            <div><span>Virtual Workspace</span><small>Guided coding lab</small></div>
+            <ChevronRight size={14} />
+          </button>
         </div>
 
         {learning ? (
@@ -900,28 +866,47 @@ export default function App() {
           <div className="topbar-context">
             <span className="mobile-brand"><GraduationCap size={20} /> Pathwise</span>
             <span className="breadcrumb">
-              {section === "interview" ? "Practice" : "Learning Studio"}
+              {section === "learning" ? "Learning Studio" : "Practice"}
             </span>
             <ChevronRight size={14} />
             <strong>
-              {section === "interview"
-                ? "Mock Interview"
-                : STEPS.find((step) => step.id === view)?.label}
+              {section === "learning" ? STEPS.find((step) => step.id === view)?.label
+                : inInterview ? interviewTask ? "Task Interview" : "Mock Interview"
+                : section === "challenge" ? "Scenario Challenge" : "Virtual Workspace"}
             </strong>
           </div>
-          <button className="key-status" onClick={() => openKeyDialog(false)} type="button">
-            <span className={apiKeyValue ? "key-dot connected" : "key-dot"} />
-            <KeyRound size={16} />
-            <span>{apiKeyValue ? "DeepSeek connected" : "Add DeepSeek key"}</span>
-          </button>
+          {account ? (
+            <button className="account-status" onClick={account.open} type="button">
+              <UserRound size={16} aria-hidden="true" />
+              <span>{account.userId ? "Account" : "Sign in"}</span>
+              {account.userId && account.status === "saving" ? <span>· Saving…</span> : null}
+              {account.userId && (account.status === "offline" || account.status === "conflict")
+                ? <span className="account-sync-alert">· Sync needs attention</span> : null}
+            </button>
+          ) : null}
         </header>
 
         <main className="main-content">
-          {section === "interview" ? (
-            <InterviewModule
-              apiKey={apiKeyValue}
-              onRequestApiKey={() => openKeyDialog(false)}
-            />
+          {section === "workspace" ? (
+            <WorkspaceModule onInterview={startTaskInterview} />
+          ) : section === "challenge" ? (
+            <ScenarioChallenge onBack={() => switchSection("learning")} onInterview={startTaskInterview} />
+          ) : inInterview ? (
+            <>
+              {interviewTask ? (
+                <button
+                  className="text-button task-interview-back"
+                  onClick={() => switchSection(interviewTask.kind === "workspace" ? "workspace" : "challenge")}
+                  type="button"
+                >Back to practice</button>
+              ) : null}
+              <InterviewModule
+                canUseLive={!account || Boolean(account.userId)}
+                key={interviewTask?.kind ?? "general"}
+                onSignIn={account?.open}
+                task={interviewTask ?? undefined}
+              />
+            </>
           ) : (
             <>
           {view === "upload" ? (
@@ -943,14 +928,22 @@ export default function App() {
                 </div>
                 <h1>Turn course notes into <span>active knowledge.</span></h1>
                 <p>
-                  Upload a PDF and let AI build a focused study plan, then test your
+                  Upload a PDF or PPTX and let AI build a focused study plan, then test your
                   understanding with instant, source-grounded feedback.
                 </p>
+                {account ? <p>
+                  {account.userId
+                    ? "When you generate a study kit, your original file is saved privately to your account."
+                    : "Sign in before uploading to generate study kits and save your progress."}
+                </p> : null}
                 <div className="feature-pills">
                   <span><Check size={14} /> AI summary</span>
                   <span><Check size={14} /> Guided plan</span>
                   <span><Check size={14} /> Instant quiz</span>
                 </div>
+                <button className="text-button" onClick={() => switchSection("challenge")} type="button">
+                  Try scenario challenge
+                </button>
               </section>
 
               <section className="upload-card panel">
@@ -965,7 +958,8 @@ export default function App() {
                   onDrop={handleDrop}
                 >
                   <input
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    aria-label="Choose course file"
                     hidden
                     onChange={(event) => {
                       const file = event.target.files?.[0];
@@ -975,16 +969,16 @@ export default function App() {
                     type="file"
                   />
                   <div className="upload-icon"><UploadCloud size={27} /></div>
-                  <h2>{busy === "parse" ? "Reading your document..." : "Drop your course PDF here"}</h2>
-                  <p>Text-based PDF, up to 10 MB and 50 pages</p>
+                  <h2>{busy === "parse" ? "Reading your document..." : "Drop your course file here"}</h2>
+                  <p>PDF or PPTX, up to 10 MB and 50 pages or slides</p>
                   <div className="upload-actions">
                     <button
                       className="button primary"
                       disabled={busy !== null}
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => { if (requireSignIn()) fileInputRef.current?.click(); }}
                       type="button"
                     >
-                      Choose PDF
+                      Choose PDF or PPTX
                     </button>
                     <span>or</span>
                     <button
@@ -1019,19 +1013,29 @@ export default function App() {
                 ) : null}
 
                 {draft ? (
+                  <>
+                  <DocumentReview
+                    busy={busy !== null}
+                    onEdit={editPage}
+                    onRecognize={requestRecognition}
+                    pages={draft.pages}
+                    recognizingPage={recognizingPage}
+                  />
+                  {characterLimitExceeded ? (
+                    <p className="document-review-note" role="status">Trim the reviewed text to 30,000 characters before generating.</p>
+                  ) : null}
                   <div className="document-ready">
                     <div className="document-ready-icon"><Check size={21} /></div>
                     <div className="document-ready-copy">
-                      <span>Ready to generate</span>
+                      <span>{reviewedCharacters > 0 && !characterLimitExceeded ? "Ready to generate" : "Review required"}</span>
                       <strong>{draft.meta.name}</strong>
                       <p>
-                        {draft.meta.pageCount} pages · {draft.meta.characterCount.toLocaleString()} characters
-                        · {formatBytes(new Blob([draft.text]).size)} text
+                        {draft.meta.pageCount} pages · {reviewedCharacters.toLocaleString()} characters
                       </p>
                     </div>
                     <button
                       className="button primary"
-                      disabled={busy !== null}
+                      disabled={busy !== null || !reviewedCharacters || characterLimitExceeded}
                       onClick={requestGeneration}
                       type="button"
                     >
@@ -1039,13 +1043,14 @@ export default function App() {
                       {busy === "generate" ? "Building your plan..." : "Generate study kit"}
                     </button>
                   </div>
+                  </>
                 ) : null}
 
                 {busy === "generate" ? (
                   <div className="generation-status" role="status">
                     <span className="spinner" />
                     <div>
-                      <strong>DeepSeek is mapping your learning path</strong>
+                      <strong>Building your study kit</strong>
                       <p>Summarizing concepts, sequencing practice, and writing quiz questions.</p>
                     </div>
                   </div>
@@ -1069,27 +1074,31 @@ export default function App() {
             </div>
           ) : null}
 
+          {view !== "upload" && pendingCourseFile ? (
+            <div className="page-error floating">
+              <CircleHelp size={19} />
+              <p role="status">
+                {busy === "upload" ? "Uploading the original course file…" : "The original course file could not be saved. Your study kit is ready."}
+              </p>
+              <button className="text-button" disabled={busy !== null} onClick={() => void retryCourseUpload()} type="button">
+                Retry file upload
+              </button>
+            </div>
+          ) : null}
+
           {view === "plan" && learning ? (
-            <>
-              {pageError ? (
-                <div className="page-error floating" role="alert">
-                  <CircleHelp size={19} />
-                  <div><strong>Generation failed</strong><p>{pageError}</p></div>
-                  <button className="text-button" onClick={() => setPageError("")} type="button">Dismiss</button>
-                </div>
-              ) : null}
               <StagePlan
                 bundle={learning.bundle}
                 onContinue={openQuiz}
                 onToggleTask={toggleTask}
               />
-            </>
           ) : null}
 
           {view === "quiz" && learning ? (
             <QuizView
               bundle={learning.bundle}
               onAnswer={answerQuestion}
+              onChallenge={() => switchSection("challenge")}
               onFinish={() => navigate("progress")}
               onNext={(nextIndex) => {
                 setQuizIndex(nextIndex);
@@ -1114,22 +1123,6 @@ export default function App() {
         </main>
       </div>
 
-      {keyDialogOpen ? (
-        <KeyDialog
-          apiKey={apiKeyValue}
-          error={keyError}
-          onClear={handleClearKey}
-          onClose={() => {
-            setKeyDialogOpen(false);
-            setPendingGeneration(false);
-          }}
-          onSave={saveKey}
-          onTest={(key) => void testKey(key)}
-          pendingGeneration={pendingGeneration}
-          success={keySuccess}
-          testing={testingKey}
-        />
-      ) : null}
     </div>
   );
 }

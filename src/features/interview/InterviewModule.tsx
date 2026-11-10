@@ -7,7 +7,6 @@ import {
   CircleAlert,
   Clock3,
   Code2,
-  KeyRound,
   Lightbulb,
   MessageSquareText,
   Play,
@@ -24,9 +23,10 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { useProgressStorage } from "../account/progress-storage";
 import { generateInterviewFollowUp, generateInterviewReport } from "./api";
 import { createDemoFollowUp, createDemoReport } from "./demo";
-import { INTERVIEW_QUESTIONS } from "./questions";
+import { createTaskQuestions, getSessionQuestions, INTERVIEW_QUESTIONS } from "./questions";
 import {
   clearInterviewSession,
   loadInterviewSession,
@@ -36,12 +36,14 @@ import type {
   InterviewMode,
   InterviewReport,
   InterviewSession,
+  InterviewTask,
 } from "./types";
 import "./interview.css";
 
 type InterviewModuleProps = {
-  apiKey: string;
-  onRequestApiKey: () => void;
+  canUseLive?: boolean;
+  onSignIn?: () => void;
+  task?: InterviewTask;
 };
 
 function errorMessage(error: unknown) {
@@ -49,7 +51,7 @@ function errorMessage(error: unknown) {
   return "The request could not be completed. Your answers are safe.";
 }
 
-function createSession(mode: InterviewMode): InterviewSession {
+function createSession(mode: InterviewMode, task?: InterviewTask): InterviewSession {
   return {
     version: 1,
     track: "general-swe",
@@ -58,7 +60,28 @@ function createSession(mode: InterviewMode): InterviewSession {
     currentQuestionIndex: 0,
     phase: "question",
     answers: [],
+    ...(task ? { task, questions: createTaskQuestions(task) } : {}),
   };
+}
+
+function isSamePractice(previous: InterviewTask, current: InterviewTask) {
+  return previous.attemptId === current.attemptId
+    && previous.title === current.title
+    && previous.decision === current.decision
+    && previous.result === current.result
+    && previous.evidence.length === current.evidence.length
+    && previous.evidence.every((item, index) => item === current.evidence[index]);
+}
+
+function TaskBrief({ task }: { task: InterviewTask }) {
+  return (
+    <details className="task-interview-brief">
+      <summary>Recorded practice from {task.title}</summary>
+      <p><strong>Decision</strong> {task.decision}</p>
+      <p><strong>Outcome</strong> {task.result}</p>
+      <ul>{task.evidence.map((entry, index) => <li key={index}>{entry}</li>)}</ul>
+    </details>
+  );
 }
 
 function modeLabel(mode: InterviewMode) {
@@ -90,15 +113,17 @@ function ChatMessage({ speaker, label, children, followUp = false }: MessageProp
 }
 
 type SetupProps = {
-  apiKey: string;
-  onRequestApiKey: () => void;
+  canUseLive?: boolean;
+  onSignIn?: () => void;
   onStart: (mode: InterviewMode) => void;
+  task?: InterviewTask;
 };
 
-function InterviewSetup({ apiKey, onRequestApiKey, onStart }: SetupProps) {
+function InterviewSetup({ canUseLive, onSignIn, onStart, task }: SetupProps) {
+  const questions = task ? createTaskQuestions(task) : INTERVIEW_QUESTIONS;
   function startLive() {
-    if (!apiKey) {
-      onRequestApiKey();
+    if (!canUseLive) {
+      onSignIn?.();
       return;
     }
     onStart("live");
@@ -110,16 +135,18 @@ function InterviewSetup({ apiKey, onRequestApiKey, onStart }: SetupProps) {
         <div className="interview-hero-copy">
           <div className="interview-kicker">
             <BriefcaseBusiness size={16} />
-            AI mock interview
+            {task ? "Task interview" : "AI mock interview"}
           </div>
-          <h1>Practice the thinking, <span>not just the answer.</span></h1>
+          {task ? <h1>Explain your <span>practice decisions.</span></h1>
+            : <h1>Practice the thinking, <span>not just the answer.</span></h1>}
           <p>
-            Work through a realistic entry-level software engineering interview with
-            one targeted follow-up per question and a practical learning report.
+            {task
+              ? `Discuss your choices in ${task.title}. Each question uses your recorded practice.`
+              : "Work through a realistic entry-level software engineering interview with one targeted follow-up per question and a practical learning report."}
           </p>
           <div className="interview-facts">
-            <span><Clock3 size={15} /> 8-10 minutes</span>
-            <span><MessageSquareText size={15} /> 4 questions + 4 follow-ups</span>
+            <span><Clock3 size={15} /> {task ? "4–5" : "8–10"} minutes</span>
+            <span><MessageSquareText size={15} /> {questions.length} questions + {questions.length} follow-ups</span>
             <span><Target size={15} /> Learning feedback</span>
           </div>
         </div>
@@ -132,11 +159,12 @@ function InterviewSetup({ apiKey, onRequestApiKey, onStart }: SetupProps) {
           </div>
           <div className="hero-art-card">
             <span>INTERVIEW BRIEF</span>
-            <strong>Entry-level SWE</strong>
-            <p>Reasoning · debugging · design · collaboration</p>
+            <strong>{task ? "Practice review" : "Entry-level SWE"}</strong>
+            <p>{task ? "Decision · evidence · verification" : "Reasoning · debugging · design · collaboration"}</p>
           </div>
         </div>
       </section>
+      {task ? <TaskBrief task={task} /> : null}
 
       <section className="interview-mode-section">
         <div className="section-heading">
@@ -158,23 +186,18 @@ function InterviewSetup({ apiKey, onRequestApiKey, onStart }: SetupProps) {
             </div>
             <h3>Live AI interview</h3>
             <p>
-              DeepSeek listens to each answer, asks one relevant follow-up, and
+              The interviewer uses each answer to ask a relevant follow-up and
               writes a personalized feedback report.
             </p>
             <ul>
               <li><Check size={14} /> Adaptive, specific follow-up questions</li>
               <li><Check size={14} /> AI report grounded in your transcript</li>
-              <li><KeyRound size={14} /> Requires your DeepSeek API key</li>
+              <li><UserRound size={14} /> Available to signed-in learners</li>
             </ul>
             <button className="button primary mode-start" onClick={startLive} type="button">
-              {apiKey ? "Start live interview" : "Connect key & start"}
+              {canUseLive ? "Start live interview" : "Sign in to start"}
               <ArrowRight size={17} />
             </button>
-            {!apiKey ? (
-              <p className="mode-footnote">
-                Your key stays in this browser tab and is never saved with the interview.
-              </p>
-            ) : null}
           </article>
 
           <article className="mode-card demo">
@@ -188,7 +211,7 @@ function InterviewSetup({ apiKey, onRequestApiKey, onStart }: SetupProps) {
               follow-ups, and scoring use an explicit local simulation.
             </p>
             <ul>
-              <li><Check size={14} /> Four complete question rounds</li>
+              <li><Check size={14} /> {questions.length} complete question rounds</li>
               <li><Check size={14} /> Instant local learning report</li>
               <li><Check size={14} /> Clearly labeled simulated results</li>
             </ul>
@@ -204,7 +227,7 @@ function InterviewSetup({ apiKey, onRequestApiKey, onStart }: SetupProps) {
       </section>
 
       <section className="interview-topic-strip">
-        {INTERVIEW_QUESTIONS.map((question, index) => (
+        {questions.map((question, index) => (
           <div key={question.id}>
             <span>0{index + 1}</span>
             <strong>{question.topic}</strong>
@@ -241,7 +264,8 @@ function InterviewChat({
   const endRef = useRef<HTMLDivElement>(null);
   const activeIndex = session.currentQuestionIndex;
   const currentAnswer = session.answers[activeIndex];
-  const currentQuestion = INTERVIEW_QUESTIONS[activeIndex];
+  const questions = getSessionQuestions(session);
+  const currentQuestion = questions[activeIndex];
 
   useEffect(() => {
     if (typeof endRef.current?.scrollIntoView === "function") {
@@ -266,13 +290,14 @@ function InterviewChat({
             {modeLabel(session.mode)}
           </span>
         </div>
-        <h2>Entry-level SWE</h2>
+        <h2>{session.task ? "Task interview" : "Entry-level SWE"}</h2>
         <p className="progress-panel-copy">
           Answer naturally. One follow-up will explore a missing detail before the next topic.
         </p>
+        {session.task ? <TaskBrief task={session.task} /> : null}
 
         <ol className="interview-stepper">
-          {INTERVIEW_QUESTIONS.map((question, index) => {
+          {questions.map((question, index) => {
             const complete = index < activeIndex || session.phase === "report";
             const current = index === activeIndex && session.phase !== "report";
             return (
@@ -290,9 +315,9 @@ function InterviewChat({
         <div className="progress-panel-footer">
           <div>
             <span>Question</span>
-            <strong>{session.phase === "report" ? "Complete" : `${activeIndex + 1} of 4`}</strong>
+            <strong>{session.phase === "report" ? "Complete" : `${activeIndex + 1} of ${questions.length}`}</strong>
           </div>
-          <button className="text-button" onClick={onExit} type="button">
+          <button className="text-button" disabled={busy} onClick={onExit} type="button">
             <RotateCcw size={14} />
             Restart
           </button>
@@ -306,12 +331,12 @@ function InterviewChat({
             <div>
               <strong>Pathwise Interviewer</strong>
               <small>
-                {session.mode === "live" ? "Powered by DeepSeek" : "Local simulated interviewer"}
+                {session.mode === "live" ? "Live AI interviewer" : "Local simulated interviewer"}
               </small>
             </div>
           </div>
           <div className="chat-header-meta">
-            <span><Clock3 size={14} /> 8-10 min</span>
+            <span><Clock3 size={14} /> {session.task ? "4–5" : "8–10"} min</span>
             <span className={session.mode === "demo" ? "demo-indicator" : "live-indicator"}>
               {modeLabel(session.mode)}
             </span>
@@ -329,7 +354,7 @@ function InterviewChat({
         ) : null}
 
         <div className="chat-log" role="log" aria-live="polite">
-          {INTERVIEW_QUESTIONS.slice(0, activeIndex).map((question, index) => {
+          {questions.slice(0, session.phase === "report" ? questions.length : activeIndex).map((question, index) => {
             const answer = session.answers[index];
             if (!answer) return null;
             return (
@@ -404,6 +429,12 @@ function InterviewChat({
               <CircleAlert size={24} />
               <strong>Your transcript is saved.</strong>
               <p>Retry the report or continue this session in Demo mode.</p>
+              {!error ? (
+                <div className="error-actions">
+                  <button className="text-button" onClick={onRetryReport} type="button">Retry report</button>
+                  <button className="text-button" onClick={onSwitchToDemo} type="button">Continue in Demo mode</button>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div ref={endRef} />
@@ -417,6 +448,7 @@ function InterviewChat({
             <textarea
               disabled={busy}
               id="interview-answer"
+              maxLength={4000}
               onChange={(event) => onDraftChange(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
@@ -450,10 +482,14 @@ type ReportProps = {
   session: InterviewSession;
   report: InterviewReport;
   onRestart: () => void;
+  onRevision: (questionId: string, answer: string) => void;
 };
 
-function InterviewReportView({ session, report, onRestart }: ReportProps) {
+function InterviewReportView({ session, report, onRestart, onRevision }: ReportProps) {
   const [showTranscript, setShowTranscript] = useState(false);
+  const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
+  const [revisionDraft, setRevisionDraft] = useState("");
+  const questions = getSessionQuestions(session);
   const average =
     report.dimensions.reduce((total, dimension) => total + dimension.score, 0) /
     report.dimensions.length;
@@ -481,6 +517,7 @@ function InterviewReportView({ session, report, onRestart }: ReportProps) {
           </div>
         </div>
       </section>
+      {session.task ? <TaskBrief task={session.task} /> : null}
 
       <div className="report-disclaimer">
         <ShieldCheck size={17} />
@@ -556,6 +593,7 @@ function InterviewReportView({ session, report, onRestart }: ReportProps) {
       <div className="report-actions">
         <button
           className="button secondary"
+          aria-expanded={showTranscript}
           onClick={() => setShowTranscript((current) => !current)}
           type="button"
         >
@@ -571,17 +609,63 @@ function InterviewReportView({ session, report, onRestart }: ReportProps) {
       {showTranscript ? (
         <section className="transcript-review">
           <div className="section-heading">
-            <div><p className="eyebrow">Full transcript</p><h2>Review your answers</h2></div>
+            <div><p className="eyebrow">Full transcript</p><h2>Review and retry your answers</h2></div>
           </div>
-          {session.answers.map((answer, index) => (
-            <article key={answer.questionId}>
-              <span>Question {index + 1}</span>
-              <h3>{INTERVIEW_QUESTIONS[index].prompt}</h3>
-              <p><strong>You:</strong> {answer.initialAnswer}</p>
-              <p><strong>Follow-up:</strong> {answer.followUp}</p>
-              <p><strong>Your response:</strong> {answer.followUpAnswer}</p>
-            </article>
-          ))}
+          {session.answers.map((answer, index) => {
+            const question = questions[index];
+            const revisions = session.revisions?.filter(({ questionId }) => questionId === answer.questionId) ?? [];
+            const latest = revisions.at(-1);
+            return (
+              <article key={answer.questionId}>
+                <span>Question {index + 1}</span>
+                <h3>{question.prompt}</h3>
+                <div className={latest ? "interview-answer-comparison" : undefined}>
+                  <div><strong>Original answer</strong><p>{answer.initialAnswer}</p></div>
+                  {latest ? <div><strong>Latest revision</strong><p>{latest.answer}</p></div> : null}
+                </div>
+                <p><strong>Follow-up:</strong> {answer.followUp}</p>
+                <p><strong>Your response:</strong> {answer.followUpAnswer}</p>
+                {revisions.length > 1 ? (
+                  <details>
+                    <summary>Earlier revisions ({revisions.length - 1})</summary>
+                    <ol>{revisions.slice(0, -1).map((revision, revisionIndex) =>
+                      <li key={revisionIndex}>{revision.answer}</li>,
+                    )}</ol>
+                  </details>
+                ) : null}
+                {retryQuestion === answer.questionId ? (
+                  <form className="interview-revision-form" onSubmit={(event) => {
+                    event.preventDefault();
+                    if (revisionDraft.trim().length < 10) return;
+                    onRevision(answer.questionId, revisionDraft.trim());
+                    setRetryQuestion(null);
+                  }}>
+                    <p><strong>Practice focus</strong> {question.improvement}</p>
+                    <label htmlFor="interview-revision">Revised answer</label>
+                    <textarea
+                      autoFocus
+                      id="interview-revision"
+                      maxLength={4000}
+                      onChange={(event) => setRevisionDraft(event.target.value)}
+                      rows={4}
+                      value={revisionDraft}
+                    />
+                    <button className="button primary" disabled={revisionDraft.trim().length < 10} type="submit">Save revision</button>
+                    <button className="button secondary" onClick={() => setRetryQuestion(null)} type="button">Cancel</button>
+                  </form>
+                ) : (
+                  <button
+                    className="button secondary"
+                    onClick={() => {
+                      setRetryQuestion(answer.questionId);
+                      setRevisionDraft(latest?.answer ?? answer.initialAnswer);
+                    }}
+                    type="button"
+                  >Retry question {index + 1}</button>
+                )}
+              </article>
+            );
+          })}
         </section>
       ) : null}
     </div>
@@ -589,30 +673,39 @@ function InterviewReportView({ session, report, onRestart }: ReportProps) {
 }
 
 export default function InterviewModule({
-  apiKey,
-  onRequestApiKey,
+  canUseLive = true,
+  onSignIn,
+  task,
 }: InterviewModuleProps) {
+  const storage = useProgressStorage();
   const [session, setSession] = useState<InterviewSession | null>(() =>
-    loadInterviewSession(),
+    loadInterviewSession(task?.kind, storage),
   );
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [continuePrevious, setContinuePrevious] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   function commit(next: InterviewSession) {
+    if (!mounted.current) return;
     setSession(next);
-    saveInterviewSession(next);
+    saveInterviewSession(next, storage);
   }
 
   function startInterview(mode: InterviewMode) {
     setError("");
     setDraft("");
-    commit(createSession(mode));
+    commit(createSession(mode, task));
   }
 
   function restart() {
-    if (!window.confirm("Clear this interview transcript and report?")) return;
-    clearInterviewSession();
+    if (busy || !window.confirm("Clear this interview transcript, revisions and report?")) return;
+    clearInterviewSession(task?.kind, storage);
     setSession(null);
     setDraft("");
     setError("");
@@ -623,7 +716,7 @@ export default function InterviewModule({
     setBusy(true);
     setError("");
     try {
-      const report = await generateInterviewReport(apiKey, base);
+      const report = await generateInterviewReport(base);
       commit({ ...base, report });
     } catch (caught) {
       setError(errorMessage(caught));
@@ -633,12 +726,13 @@ export default function InterviewModule({
   }
 
   async function submitQuestionAnswer(current: InterviewSession, answerText: string) {
-    const currentQuestion = INTERVIEW_QUESTIONS[current.currentQuestionIndex];
+    const questions = getSessionQuestions(current);
+    const currentQuestion = questions[current.currentQuestionIndex];
     if (current.mode === "demo") {
       const answer = {
         questionId: currentQuestion.id,
         initialAnswer: answerText,
-        followUp: createDemoFollowUp(current.currentQuestionIndex),
+        followUp: createDemoFollowUp(current.currentQuestionIndex, questions),
         followUpAnswer: "",
       };
       commit({ ...current, phase: "follow-up", answers: [...current.answers, answer] });
@@ -649,7 +743,7 @@ export default function InterviewModule({
     setBusy(true);
     setError("");
     try {
-      const followUp = await generateInterviewFollowUp(apiKey, current, answerText);
+      const followUp = await generateInterviewFollowUp(current, answerText);
       const answer = {
         questionId: currentQuestion.id,
         initialAnswer: answerText,
@@ -672,7 +766,7 @@ export default function InterviewModule({
         : answer,
     );
 
-    if (current.currentQuestionIndex === 3) {
+    if (current.currentQuestionIndex === getSessionQuestions(current).length - 1) {
       const reportBase = { ...current, phase: "report" as const, answers: updatedAnswers };
       commit(reportBase);
       setDraft("");
@@ -684,10 +778,9 @@ export default function InterviewModule({
       return;
     }
 
-    const nextIndex = (current.currentQuestionIndex + 1) as 1 | 2 | 3;
     commit({
       ...current,
-      currentQuestionIndex: nextIndex,
+      currentQuestionIndex: current.currentQuestionIndex + 1,
       phase: "question",
       answers: updatedAnswers,
     });
@@ -725,12 +818,29 @@ export default function InterviewModule({
     }
   }
 
+  if (task && session?.task && !continuePrevious && !isSamePractice(session.task, task)) {
+    return (
+      <section className="panel scenario-panel">
+        <h2>Choose a task interview</h2>
+        <p>A saved interview uses evidence from an earlier practice. You can resume it or start with your latest practice.</p>
+        <button className="button secondary" onClick={() => setContinuePrevious(true)} type="button">
+          Continue saved interview
+        </button>
+        <button className="button primary" onClick={() => setSession(null)} type="button">
+          Use latest practice
+        </button>
+        <p>The saved interview is replaced when you start a new one.</p>
+      </section>
+    );
+  }
+
   if (!session) {
     return (
       <InterviewSetup
-        apiKey={apiKey}
-        onRequestApiKey={onRequestApiKey}
+        canUseLive={canUseLive}
+        onSignIn={onSignIn}
         onStart={startInterview}
+        task={task}
       />
     );
   }
@@ -738,6 +848,9 @@ export default function InterviewModule({
   if (session.phase === "report" && session.report) {
     return (
       <InterviewReportView
+        onRevision={(questionId, answer) => commit({
+          ...session, revisions: [...(session.revisions ?? []), { questionId, answer }],
+        })}
         onRestart={restart}
         report={session.report}
         session={session}

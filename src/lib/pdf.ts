@@ -1,4 +1,5 @@
-import type { ExtractedDocument } from "../types";
+import type { DocumentPage, ExtractedDocument } from "../types";
+import { countDocumentCharacters, DOCUMENT_LIMITS } from "./document";
 
 async function getPdfLibrary() {
   const [pdfjs, worker] = await Promise.all([
@@ -9,12 +10,7 @@ async function getPdfLibrary() {
   return pdfjs;
 }
 
-export const PDF_LIMITS = {
-  maxBytes: 10 * 1024 * 1024,
-  maxPages: 50,
-  maxCharacters: 30_000,
-  minCharacters: 80,
-} as const;
+export const PDF_LIMITS = DOCUMENT_LIMITS;
 
 export class PdfValidationError extends Error {
   constructor(message: string) {
@@ -52,7 +48,7 @@ export async function extractPdf(file: File): Promise<ExtractedDocument> {
 
   const pdfjs = await getPdfLibrary();
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const loadingTask = pdfjs.getDocument({ data: bytes });
+  const loadingTask = pdfjs.getDocument({ data: bytes, isEvalSupported: false });
   let pdf: Awaited<typeof loadingTask.promise>;
 
   try {
@@ -63,37 +59,51 @@ export async function extractPdf(file: File): Promise<ExtractedDocument> {
       );
     }
 
-    const pageTexts: string[] = [];
+    const pages: DocumentPage[] = [];
+    const imageOps = new Set<number>([
+      pdfjs.OPS.paintImageXObject,
+      pdfjs.OPS.paintImageXObjectRepeat,
+      pdfjs.OPS.paintInlineImageXObject,
+      pdfjs.OPS.paintInlineImageXObjectGroup,
+      pdfjs.OPS.paintImageMaskXObject,
+      pdfjs.OPS.paintImageMaskXObjectGroup,
+      pdfjs.OPS.paintImageMaskXObjectRepeat,
+    ]);
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      const text = content.items
+      const text = normalizePdfText(content.items
         .map((item) => ("str" in item ? `${item.str}${item.hasEOL ? "\n" : " "}` : ""))
-        .join("");
-      pageTexts.push(text);
+        .join(""));
+      const operators = await page.getOperatorList();
+      const entry: DocumentPage = { text, images: [] };
+      if (!text || operators.fnArray.some((op) => imageOps.has(op))) {
+        const size = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: 1600 / Math.max(size.width, size.height) });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.ceil(viewport.width));
+        canvas.height = Math.max(1, Math.ceil(viewport.height));
+        const canvasContext = canvas.getContext("2d");
+        if (!canvasContext) throw new PdfValidationError("The browser could not preview a PDF page.");
+        try {
+          await page.render({ canvasContext, viewport, background: "white" }).promise;
+          entry.images.push(canvas.toDataURL("image/jpeg", 0.9));
+        } finally {
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+      }
+      pages.push(entry);
       page.cleanup();
-    }
-
-    const text = normalizePdfText(pageTexts.join("\n\n"));
-    if (text.length < PDF_LIMITS.minCharacters) {
-      throw new PdfValidationError(
-        "No readable text was found. Scanned PDFs are not supported in this demo.",
-      );
-    }
-
-    if (text.length > PDF_LIMITS.maxCharacters) {
-      throw new PdfValidationError(
-        "The extracted text exceeds the 30,000-character demo limit.",
-      );
     }
 
     return {
       meta: {
         name: file.name,
         pageCount: pdf.numPages,
-        characterCount: text.length,
+        characterCount: countDocumentCharacters(pages),
       },
-      text,
+      pages,
     };
   } finally {
     await loadingTask.destroy();
