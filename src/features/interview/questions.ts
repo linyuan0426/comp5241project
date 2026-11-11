@@ -1,4 +1,5 @@
 import type { InterviewQuestion, InterviewSession, InterviewTask } from "./types.ts";
+import { scenarioCases } from "../learning/scenario-cases.ts";
 
 export const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
   {
@@ -95,6 +96,7 @@ export function getSessionQuestions(session: InterviewSession) {
 
 export function createTaskQuestions(task: InterviewTask): InterviewQuestion[] {
   const workspace = task.kind === "workspace";
+  const scenario = scenarioCases[task.scenarioId ?? "discount"];
   return [
     {
       id: "coding-reasoning",
@@ -102,8 +104,8 @@ export function createTaskQuestions(task: InterviewTask): InterviewQuestion[] {
       prompt: `In ${task.title}, your recorded decision was “${task.decision}”. Explain the requirement behind that choice and one trade-off you considered.`,
       demoFollowUp: workspace
         ? "If a teammate proposed a broader change to the page, what would you keep in this commit and why?"
-        : "Why would making every total positive fail to satisfy the discount requirement?",
-      signals: workspace ? ["label", "scope", "requirement", "review", "commit"] : ["price", "discount", "zero", "requirement", "boundary"],
+        : scenario.followUps[0],
+      signals: workspace ? ["label", "scope", "requirement", "review", "commit"] : [...scenario.signals, "requirement"],
       improvement: "Name the requirement, explain your choice, and contrast it with a plausible alternative.",
     },
     {
@@ -112,8 +114,8 @@ export function createTaskQuestions(task: InterviewTask): InterviewQuestion[] {
       prompt: `The practice recorded this outcome: “${task.result}” How would you verify the change on a real project, and what would that evidence tell you?`,
       demoFollowUp: workspace
         ? "If the staged file differs from what you just checked, what would you verify before committing?"
-        : "Which inputs would you use immediately below, at, and above the price, and what totals would you expect?",
-      signals: workspace ? ["test", "check", "stage", "diff", "commit", "push"] : ["test", "discount", "boundary", "expected", "zero", "price"],
+        : scenario.followUps[1],
+      signals: workspace ? ["test", "check", "stage", "diff", "commit", "push"] : ["test", "expected", ...scenario.signals],
       improvement: "Give a specific check, its expected result, and what you would do if the result differed.",
     },
   ];

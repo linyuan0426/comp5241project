@@ -3,59 +3,12 @@ import { useState } from "react";
 import { z } from "zod";
 import { useProgressStorage, type ProgressStorage } from "../account/progress-storage";
 import type { InterviewTask } from "../interview/types";
+import { scenarioCases, scenarioIds, type ScenarioId } from "./scenario-cases";
 import "./learning.css";
-
-const steps = [
-  {
-    title: "Investigate the negative total",
-    situation: "A student buys a workshop ticket for $10 and enters a $15 discount. The checkout displays −$5. What would you check first?",
-    hint: "Compare a normal purchase with a purchase whose discount exceeds the price.",
-    choices: [
-      {
-        label: "Try a $5 discount and then a $15 discount",
-        feedback: "The $5 discount gives $5. The $15 discount gives −$5. You isolated the failure to discounts larger than the price.",
-        advances: true,
-      },
-      {
-        label: "Try a ticket without a discount",
-        feedback: "The total stays at $10. That verifies the normal path, but gives no evidence about the reported negative total.",
-        advances: false,
-      },
-      {
-        label: "Check the label on the checkout button",
-        feedback: "The label is correct. The negative amount still appears, so inspect the values used in the total calculation.",
-        advances: false,
-      },
-    ],
-  },
-  {
-    title: "Review the AI’s suggested fix",
-    situation: "The AI proposes making every result positive. The requirement is that an oversized discount makes the ticket free.",
-    code: "return Math.abs(price - discount);",
-    hint: "What does the AI’s formula return for a $10 ticket with a $15 discount? What total does the requirement expect?",
-    choices: [
-      {
-        label: "Accept the patch because it removes negative totals",
-        feedback: "Math.abs turns −$5 into $5. The ticket would still cost $5 even though the discount should make it free.",
-        advances: false,
-      },
-      {
-        label: "Clamp the total at zero and test discounts below, at, and above the price",
-        feedback: "Math.max(0, price - discount) gives $5, $0, and $0 for $5, $10, and $15 discounts. All three cases match the requirement.",
-        advances: true,
-      },
-      {
-        label: "Keep the calculation and hide the minus sign",
-        feedback: "The screen would display $5 while the calculation still returns −$5. Formatting does not fix the total.",
-        advances: false,
-      },
-    ],
-  },
-] as const;
 
 const sessionSchema = z.object({
   run: z.number().int().positive(),
-  step: z.number().int().min(0).max(steps.length),
+  step: z.number().int().min(0).max(2),
   selected: z.number().int().min(0).max(2).nullable(),
   history: z.array(z.object({
     run: z.number().int().positive(),
@@ -67,14 +20,32 @@ const sessionSchema = z.object({
 type Session = z.infer<typeof sessionSchema>;
 const storageKey = "genai-scenario-discount:v1";
 const initialSession: Session = { run: 1, step: 0, selected: null, history: [] };
+const progressSchema = sessionSchema.extend({
+  activeCase: z.enum(scenarioIds).default("discount"),
+  cases: z.partialRecord(z.enum(scenarioIds).exclude(["discount"]), sessionSchema).default({}),
+});
 
-function loadSession(storage: ProgressStorage): Session {
+type ScenarioProgress = {
+  activeCase: ScenarioId;
+  sessions: Partial<Record<ScenarioId, Session>> & { discount: Session };
+};
+
+function loadProgress(storage: ProgressStorage): ScenarioProgress {
   try {
-    const parsed = sessionSchema.safeParse(JSON.parse(storage.getItem(storageKey) ?? "null"));
-    return parsed.success ? parsed.data : initialSession;
+    const parsed = progressSchema.safeParse(JSON.parse(storage.getItem(storageKey) ?? "null"));
+    if (parsed.success) {
+      const { activeCase, cases, ...discount } = parsed.data;
+      return { activeCase, sessions: { ...cases, discount } };
+    }
   } catch {
-    return initialSession;
+    // A missing or unreadable record starts a fresh challenge.
   }
+  return { activeCase: "discount", sessions: { discount: initialSession } };
+}
+
+function caseStatus(id: ScenarioId, session?: Session) {
+  if (session?.step === scenarioCases[id].steps.length) return "Complete";
+  return session?.history.length ? "In progress" : "Not started";
 }
 
 export default function ScenarioChallenge({ onBack, onInterview }: {
@@ -82,31 +53,43 @@ export default function ScenarioChallenge({ onBack, onInterview }: {
   onInterview: (task: InterviewTask) => void;
 }) {
   const storage = useProgressStorage();
-  const [session, setSession] = useState(() => loadSession(storage));
+  const [progress, setProgress] = useState(() => loadProgress(storage));
+  const { activeCase, sessions } = progress;
+  const scenario = scenarioCases[activeCase];
+  const session = sessions[activeCase] ?? initialSession;
+  const { steps } = scenario;
   const step = steps[session.step];
   const result = session.selected === null ? null : step?.choices[session.selected];
-  const finalDecision = session.history.at(-1);
+  const currentHistory = session.history.filter(({ run }) => run === session.run);
+  const finalDecision = currentHistory.at(-1);
 
   function practiceInterview() {
     if (!finalDecision) return;
     onInterview({
       kind: "scenario",
-      attemptId: String(session.run),
-      title: "the checkout discount challenge",
+      scenarioId: activeCase,
+      attemptId: activeCase === "discount" ? String(session.run) : `${activeCase}:${session.run}`,
+      title: scenario.interviewTitle,
       decision: finalDecision.choice,
       result: finalDecision.feedback,
-      evidence: session.history.filter(({ run }) => run === session.run).slice(-6)
+      evidence: currentHistory.slice(-6)
         .map(({ step, choice, feedback }) => `${step}: ${choice}. ${feedback}`),
     });
   }
 
-  function save(next: Session) {
-    setSession(next);
+  function saveProgress(next: ScenarioProgress) {
+    setProgress(next);
     try {
-      storage.setItem(storageKey, JSON.stringify(next));
+      // The original checkout fields stay at the top level for existing records.
+      const { discount, ...cases } = next.sessions;
+      storage.setItem(storageKey, JSON.stringify({ ...discount, activeCase: next.activeCase, cases }));
     } catch {
       // The current attempt remains available in memory.
     }
+  }
+
+  function save(next: Session) {
+    saveProgress({ activeCase, sessions: { ...sessions, [activeCase]: next } });
   }
 
   function choose(index: number) {
@@ -132,16 +115,32 @@ export default function ScenarioChallenge({ onBack, onInterview }: {
       <header>
         <p className="eyebrow">Software engineering practice</p>
         <h1 id="scenario-title">Scenario Challenge</h1>
-        <p>Investigate a checkout bug and decide whether to accept the AI’s fix.</p>
+        <p>Choose a case, see what your decisions change, and try another approach.</p>
       </header>
 
+      <nav className="scenario-cases" aria-label="Choose a scenario">
+        {scenarioIds.map((id) => (
+          <button
+            aria-pressed={id === activeCase}
+            className="button secondary"
+            key={id}
+            onClick={() => saveProgress({ ...progress, activeCase: id })}
+            type="button"
+          >
+            <strong>{scenarioCases[id].title}</strong>
+            <span>{caseStatus(id, sessions[id])}</span>
+          </button>
+        ))}
+      </nav>
+
       <div className="panel scenario-panel">
+        <p>{scenario.description}</p>
         {step ? (
           <>
             <p className="eyebrow">Decision {session.step + 1} of {steps.length}</p>
             <h2>{step.title}</h2>
             <p>{step.situation}</p>
-            {"code" in step ? <pre><code>{step.code}</code></pre> : null}
+            {step.code ? <pre><code>{step.code}</code></pre> : null}
             <div className="scenario-options">
               {step.choices.map((choice, index) => (
                 <button
@@ -165,7 +164,7 @@ export default function ScenarioChallenge({ onBack, onInterview }: {
                   onClick={() => save({ ...session, step: session.step + Number(result.advances), selected: null })}
                   type="button"
                 >
-                  {result.advances ? session.step === steps.length - 1 ? "Finish challenge" : "Continue to code review" : "Try another choice"}
+                  {result.advances ? session.step === steps.length - 1 ? "Finish challenge" : scenario.nextLabel : "Try another choice"}
                   <ChevronRight size={16} aria-hidden="true" />
                 </button>
               </div>
@@ -174,7 +173,7 @@ export default function ScenarioChallenge({ onBack, onInterview }: {
         ) : (
           <>
             <h2>Challenge complete</h2>
-            <p>You isolated the boundary case and verified the proposed fix against the requirement.</p>
+            <p>{scenario.completion}</p>
             <button className="button primary" disabled={!finalDecision} onClick={practiceInterview} type="button">
               Practice task interview
             </button>

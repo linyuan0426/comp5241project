@@ -122,6 +122,33 @@
   padding: clamp(16px, 3vw, 24px);
 }
 
+.scenario-cases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.scenario-cases .button {
+  display: grid;
+  align-content: start;
+  justify-content: stretch;
+  gap: 5px;
+  padding: 10px 12px;
+  text-align: left;
+  white-space: normal;
+}
+
+.scenario-cases .button[aria-pressed="true"] {
+  border-color: var(--blue);
+  background: var(--sky);
+}
+
+.scenario-cases span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .scenario-panel h2 {
   margin-bottom: 8px;
 }

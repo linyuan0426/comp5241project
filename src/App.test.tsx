@@ -224,6 +224,44 @@ describe("learning demo workflow", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("keeps old checkout progress when switching cases and uses the new case in its interview", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("genai-scenario-discount:v1", JSON.stringify({
+      run: 1,
+      step: 1,
+      selected: null,
+      history: [],
+    }));
+    const firstRender = render(<App />);
+    const button = (name: RegExp) => screen.getByRole("button", { name });
+
+    await user.click(button(/try scenario challenge/i));
+    expect(screen.getByRole("heading", { name: /review the AI’s suggested fix/i })).toBeInTheDocument();
+    await user.click(button(/duplicate workshop booking/i));
+    await user.click(button(/check both requests/i));
+    await user.click(button(/continue to retry design/i));
+    await user.click(button(/search results out of order/i));
+    expect(screen.getByRole("heading", { name: /reproduce the mismatched results/i })).toBeInTheDocument();
+    await user.click(button(/Git merge conflict/i));
+    expect(screen.getByRole("heading", { name: /review the two changes/i })).toBeInTheDocument();
+    await user.click(button(/duplicate workshop booking/i));
+    firstRender.unmount();
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: /make a retry safe/i })).toBeInTheDocument();
+    await user.click(button(/checkout discount/i));
+    expect(screen.getByRole("heading", { name: /review the AI’s suggested fix/i })).toBeInTheDocument();
+    await user.click(button(/duplicate workshop booking/i));
+    await user.click(button(/reuse a request ID/i));
+    await user.click(button(/finish challenge/i));
+    await user.click(button(/practice task interview/i));
+    await user.click(button(/start demo interview/i));
+    expect(screen.getByText(/your recorded decision was.*reuse a request ID/i)).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox"), "Reuse the same request ID to identify a retry.");
+    await user.click(button(/send answer/i));
+    expect(screen.getByText(/why should a retry reuse the same request ID/i)).toBeInTheDocument();
+  });
+
   it("keeps the previous learning pack when replacing a document fails", async () => {
     const saved = {
       version: 1 as const,

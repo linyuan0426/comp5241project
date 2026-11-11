@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { scenarioIds } from "../learning/scenario-cases.ts";
 
 export type InterviewMode = "live" | "demo";
 export type InterviewPhase = "question" | "follow-up" | "report";
@@ -14,6 +15,7 @@ export type InterviewQuestionId = (typeof interviewQuestionIds)[number];
 
 export const interviewTaskSchema = z.object({
   kind: z.enum(["workspace", "scenario"]),
+  scenarioId: z.enum(scenarioIds).optional(),
   title: z.string().min(1),
   decision: z.string().min(1),
   result: z.string().min(1),
