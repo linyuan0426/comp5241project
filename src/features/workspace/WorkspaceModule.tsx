@@ -1,8 +1,8 @@
 import {
-  Bot, Check, ChevronRight, Code2, FileCode2, FolderOpen, GitBranch,
-  GitCommitHorizontal, RotateCcw, Terminal, Upload,
+  Bot, Check, ChevronDown, ChevronRight, Code2, FileCode2, Files, FolderOpen, GitBranch,
+  GitCommitHorizontal, RotateCcw, Terminal, Upload, X,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useProgressStorage } from "../account/progress-storage";
 import type { InterviewTask } from "../interview/types";
 import {
@@ -20,6 +20,78 @@ const hints = [
 ];
 
 type ProjectFile = keyof typeof projectFiles;
+
+const languages: Record<ProjectFile, string> = {
+  "README.md": "Markdown",
+  "index.html": "HTML",
+  "signup.js": "JavaScript",
+};
+
+function highlightCode(code: string, file: ProjectFile) {
+  const tokens = file === "index.html"
+    ? /(<\/?[\w-]+|\/?>|"[^"\n]*"|'[^'\n]*')/
+    : /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|\b(?:const|let|return|function|document|querySelector|textContent)\b|^#{1,6} .+$)/m;
+
+  return code.split(tokens).map((part, index) => {
+    if (index % 2 === 0) return part;
+    const style = /^["']/.test(part) ? "string" : /^#/.test(part) ? "heading" : "symbol";
+    return <span className={`lab-syntax-${style}`} key={index}>{part}</span>;
+  });
+}
+
+function CodeEditor({ file, code, readOnly, onEdit, onSave }: {
+  file: ProjectFile;
+  code: string;
+  readOnly: boolean;
+  onEdit: (code: string) => void;
+  onSave: () => void;
+}) {
+  const paint = useRef<HTMLElement>(null);
+  const gutter = useRef<HTMLDivElement>(null);
+  const lines = code.split("\n").length;
+
+  return (
+    <div className="lab-code-surface">
+      <div aria-hidden="true" className="lab-line-numbers">
+        <div ref={gutter}>
+          {Array.from({ length: lines }, (_, index) => <div key={index}>{index + 1}</div>)}
+        </div>
+      </div>
+      <pre aria-hidden="true" className="lab-code-paint">
+        <code ref={paint}>{highlightCode(code, file)}{"\n"}</code>
+      </pre>
+      <textarea
+        autoCapitalize="off"
+        id="lab-source"
+        onChange={(event) => onEdit(event.target.value)}
+        onKeyDown={(event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+            event.preventDefault();
+            onSave();
+          }
+        }}
+        onScroll={({ currentTarget: { scrollTop, scrollLeft } }) => {
+          if (paint.current) paint.current.style.transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`;
+          if (gutter.current) gutter.current.style.transform = `translateY(${-scrollTop}px)`;
+        }}
+        readOnly={readOnly}
+        spellCheck={false}
+        value={code}
+        wrap="off"
+      />
+    </div>
+  );
+}
+
+function WorkbenchTitle() {
+  return (
+    <div className="lab-titlebar">
+      <Code2 size={18} aria-hidden="true" />
+      <strong>campus-events</strong>
+      <span>Virtual Workspace</span>
+    </div>
+  );
+}
 
 function CodeDiff({ after, title }: { after: string; title: string }) {
   const beforeLines = starterCode.trimEnd().split("\n");
@@ -52,17 +124,27 @@ function ProjectWorkspace({ session, onChange, onInterview }: {
   onInterview: (task: InterviewTask) => void;
 }) {
   const [file, setFile] = useState<ProjectFile>(editableFile);
+  const [explorerOpen, setExplorerOpen] = useState(true);
+  const [coachOpen, setCoachOpen] = useState(true);
+  const sourceControl = useRef<HTMLElement>(null);
+  const terminalLog = useRef<HTMLDivElement>(null);
   const dirty = session.draft !== session.saved;
   const changed = session.saved !== starterCode;
   const checked = session.check === "passed";
   const staged = session.staged === session.saved;
   const hintCount = session.activity.filter(({ action }) => action === "hint").length;
 
+  useEffect(() => {
+    const log = terminalLog.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [session.activity]);
+
   function update(patch: Partial<WorkspaceSession>, activity: WorkspaceActivity) {
     onChange({ ...session, ...patch, activity: [...session.activity, activity] });
   }
 
   function saveFile() {
+    if (!dirty || file !== editableFile || session.committed) return;
     update({ saved: session.draft, check: "pending" }, {
       action: "save", message: `Saved ${editableFile}.`,
     });
@@ -89,59 +171,125 @@ function ProjectWorkspace({ session, onChange, onInterview }: {
 
   return (
     <div className="lab-workbench">
-      <div className="lab-titlebar">
-        <Code2 size={17} aria-hidden="true" />
-        <strong>campus-events</strong>
-        <span><GitBranch size={14} aria-hidden="true" /> main</span>
-      </div>
-      <div className="lab-columns">
-        <nav className="lab-explorer" aria-label="Project files">
-          <h2>Explorer</h2>
-          {(Object.keys(projectFiles) as ProjectFile[]).map((name) => (
-            <button
-              aria-pressed={file === name}
-              key={name}
-              onClick={() => setFile(name)}
-              type="button"
-            >
-              <FileCode2 size={15} aria-hidden="true" />
-              {name}
-              {name === editableFile && (dirty || (changed && !session.committed))
-                ? <span aria-label={dirty ? "Unsaved" : "Modified"}>{dirty ? "●" : "M"}</span>
-                : null}
-            </button>
-          ))}
+      <WorkbenchTitle />
+      <div className="lab-columns" data-explorer={explorerOpen} data-coach={coachOpen}>
+        <nav className="lab-activity" aria-label="Workspace panels">
+          <button aria-label="Toggle Explorer" aria-pressed={explorerOpen} title="Explorer" type="button" onClick={() => setExplorerOpen(!explorerOpen)}>
+            <Files size={20} aria-hidden="true" />
+          </button>
+          <button aria-label="Go to Source Control" title="Source Control" type="button" onClick={() => sourceControl.current?.focus()}>
+            <GitBranch size={20} aria-hidden="true" />
+          </button>
+          <button aria-label="Toggle AI assistant" aria-pressed={coachOpen} title="AI assistant" type="button" onClick={() => setCoachOpen(!coachOpen)}>
+            <Bot size={20} aria-hidden="true" />
+          </button>
         </nav>
+        {explorerOpen ? <nav className="lab-explorer" aria-label="Project files">
+          <h2>Explorer</h2>
+          <details open>
+            <summary><ChevronDown size={13} aria-hidden="true" /> campus-events</summary>
+            {(Object.keys(projectFiles) as ProjectFile[]).map((name) => (
+              <button
+                aria-pressed={file === name}
+                key={name}
+                onClick={() => setFile(name)}
+                type="button"
+              >
+                <FileCode2 size={15} aria-hidden="true" />
+                {name}
+                {name === editableFile && (dirty || (changed && !session.committed))
+                  ? <span aria-label={dirty ? "Unsaved" : "Modified"}>{dirty ? "●" : "M"}</span>
+                  : null}
+              </button>
+            ))}
+          </details>
+        </nav> : null}
 
-        <section className="lab-editor" aria-label="Code editor">
-          <div className="lab-editor-bar">
-            <label htmlFor="lab-source">{file}</label>
-            <span>{file !== editableFile || session.committed ? "Read only" : dirty ? "Unsaved" : "Saved"}</span>
-          </div>
-          <textarea
-            autoCapitalize="off"
-            id="lab-source"
-            onChange={(event) => onChange({ ...session, draft: event.target.value })}
-            readOnly={file !== editableFile || session.committed}
-            spellCheck={false}
-            value={file === editableFile ? session.draft : projectFiles[file]}
-            wrap="off"
-          />
-          <div className="lab-editor-actions">
-            <button className="button secondary" disabled={!dirty || file !== editableFile} onClick={saveFile} type="button">Save file</button>
-            <button className="button secondary" disabled={!changed || dirty || session.committed} onClick={checkChange} type="button">Check change</button>
-          </div>
-          {dirty ? <p className="lab-help">Save your edit before checking or staging it.</p> : null}
-          {!dirty && session.check === "failed"
-            ? <p className="lab-help lab-error" role="status">Change only the button label, then save and check again.</p>
-            : null}
-          {!dirty && checked
-            ? <div className="lab-preview"><span>Simulated preview</span><strong>{buttonLabel}</strong></div>
-            : null}
-        </section>
+        <div className="lab-editor-stack">
+          <section className="lab-editor" aria-label="Code editor">
+            <div className="lab-editor-bar">
+              <label className="lab-file-tab" htmlFor="lab-source">
+                <FileCode2 size={14} aria-hidden="true" />
+                {file}
+                {file === editableFile && dirty ? <span aria-hidden="true">●</span> : null}
+              </label>
+              <span>{file !== editableFile || session.committed ? "Read only" : dirty ? "Unsaved" : "Saved"}</span>
+            </div>
+            <div className="lab-breadcrumb">campus-events <ChevronRight size={13} aria-hidden="true" /> {file}</div>
+            <CodeEditor
+              key={file}
+              file={file}
+              code={file === editableFile ? session.draft : projectFiles[file]}
+              onEdit={(draft) => onChange({ ...session, draft })}
+              onSave={saveFile}
+              readOnly={file !== editableFile || session.committed}
+            />
+            <div className="lab-editor-actions">
+              <button className="button secondary" disabled={!dirty || file !== editableFile || session.committed} onClick={saveFile} type="button">Save file</button>
+              <button className="button secondary" disabled={!changed || dirty || session.committed} onClick={checkChange} type="button">Check change</button>
+            </div>
+            {dirty ? <p className="lab-help">Save your edit before checking or staging it.</p> : null}
+            {!dirty && session.check === "failed"
+              ? <p className="lab-help lab-error" role="status">Change only the button label, then save and check again.</p>
+              : null}
+            {!dirty && checked
+              ? <div className="lab-preview"><span>Simulated preview</span><strong>{buttonLabel}</strong></div>
+              : null}
+          </section>
 
-        <aside className="lab-coach" aria-label="AI assistant">
-          <h2><Bot size={17} aria-hidden="true" /> AI assistant</h2>
+          <section className="lab-terminal" aria-labelledby="lab-terminal-title">
+            <h2 id="lab-terminal-title"><Terminal size={16} aria-hidden="true" /> Simulated terminal</h2>
+            <div role="log" aria-labelledby="lab-terminal-title" ref={terminalLog} tabIndex={0}>
+              {session.activity.map(({ action, message }, index) => <pre data-action={action} key={index}>{message}</pre>)}
+            </div>
+          </section>
+
+          <section className="lab-git" aria-labelledby="lab-git-title" ref={sourceControl} tabIndex={-1}>
+            <div className="lab-section-title">
+              <GitBranch size={18} aria-hidden="true" />
+              <h2 id="lab-git-title">Source Control</h2>
+              <span>{session.pushed ? "Pushed" : session.committed ? "Local commit" : staged ? "Staged" : changed ? "Changes" : "Clean"}</span>
+            </div>
+            {changed ? <CodeDiff after={session.saved} title={session.committed ? "View committed diff" : "Review saved changes"} /> : null}
+            {session.staged !== null && !staged
+              ? <p className="lab-help">The saved file changed after staging. Check it and stage the new version.</p>
+              : null}
+            {!checked && !session.committed ? <p className="lab-help">Save and pass the simulated check to stage the file.</p> : null}
+            <form className="lab-git-actions" onSubmit={commitChange}>
+              <button
+                className="button secondary"
+                disabled={dirty || !checked || staged || session.committed}
+                onClick={() => update({ staged: session.saved }, { action: "stage", message: `$ git add ${editableFile}\nStaged the saved change.` })}
+                type="button"
+              >Stage changes</button>
+              <input
+                aria-label="Commit message"
+                disabled={!staged || dirty || !checked || session.committed}
+                maxLength={120}
+                onChange={(event) => onChange({ ...session, commitMessage: event.target.value })}
+                placeholder="Describe the change"
+                value={session.commitMessage}
+              />
+              <button className="button secondary" disabled={!staged || dirty || !checked || !session.commitMessage.trim() || session.committed} type="submit">
+                <GitCommitHorizontal size={16} aria-hidden="true" /> Commit
+              </button>
+              <button
+                className="button primary"
+                disabled={!session.committed || session.pushed}
+                onClick={() => update({ pushed: true }, { action: "push", message: "$ git push origin main\nPublished the local commit to the simulated remote." })}
+                type="button"
+              ><Upload size={16} aria-hidden="true" /> Push</button>
+            </form>
+          </section>
+        </div>
+
+        {coachOpen ? <aside className="lab-coach" aria-label="AI assistant">
+          <div className="lab-coach-header">
+            <h2><Bot size={17} aria-hidden="true" /> AI assistant</h2>
+            <button className="lab-close-coach" type="button" aria-label="Hide AI assistant" onClick={() => setCoachOpen(false)}>
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
           <p className="lab-coach-label">Guided demo · preset responses</p>
           <p>The workshop’s signup button still shows a placeholder. Update it so students know they can register.</p>
           {hints.slice(0, hintCount).map((hint) => <p className="lab-hint" key={hint}>{hint}</p>)}
@@ -162,53 +310,8 @@ function ProjectWorkspace({ session, onChange, onInterview }: {
               type="button"
             >Apply suggested edit</button>
           ) : null}
-        </aside>
+        </aside> : null}
       </div>
-
-      <section className="lab-git" aria-labelledby="lab-git-title">
-        <div className="lab-section-title">
-          <GitBranch size={18} aria-hidden="true" />
-          <h2 id="lab-git-title">Source Control</h2>
-          <span>{session.pushed ? "Pushed" : session.committed ? "Local commit" : staged ? "Staged" : changed ? "Changes" : "Clean"}</span>
-        </div>
-        {changed ? <CodeDiff after={session.saved} title={session.committed ? "View committed diff" : "Review saved changes"} /> : null}
-        {session.staged !== null && !staged
-          ? <p className="lab-help">The saved file changed after staging. Check it and stage the new version.</p>
-          : null}
-        {!checked && !session.committed ? <p className="lab-help">Save and pass the simulated check to stage the file.</p> : null}
-        <form className="lab-git-actions" onSubmit={commitChange}>
-          <button
-            className="button secondary"
-            disabled={dirty || !checked || staged || session.committed}
-            onClick={() => update({ staged: session.saved }, { action: "stage", message: `$ git add ${editableFile}\nStaged the saved change.` })}
-            type="button"
-          >Stage changes</button>
-          <input
-            aria-label="Commit message"
-            disabled={!staged || dirty || !checked || session.committed}
-            maxLength={120}
-            onChange={(event) => onChange({ ...session, commitMessage: event.target.value })}
-            placeholder="Describe the change"
-            value={session.commitMessage}
-          />
-          <button className="button secondary" disabled={!staged || dirty || !checked || !session.commitMessage.trim() || session.committed} type="submit">
-            <GitCommitHorizontal size={16} aria-hidden="true" /> Commit
-          </button>
-          <button
-            className="button primary"
-            disabled={!session.committed || session.pushed}
-            onClick={() => update({ pushed: true }, { action: "push", message: "$ git push origin main\nPublished the local commit to the simulated remote." })}
-            type="button"
-          ><Upload size={16} aria-hidden="true" /> Push</button>
-        </form>
-      </section>
-
-      <section className="lab-terminal" aria-labelledby="lab-terminal-title">
-        <h2 id="lab-terminal-title"><Terminal size={16} aria-hidden="true" /> Simulated terminal</h2>
-        <div role="log" aria-labelledby="lab-terminal-title" tabIndex={0}>
-          {session.activity.map(({ message }, index) => <pre key={index}>{message}</pre>)}
-        </div>
-      </section>
       {session.pushed ? (
         <div className="lab-complete">
           <div role="status">
@@ -233,6 +336,11 @@ function ProjectWorkspace({ session, onChange, onInterview }: {
           >Practice task interview</button>
         </div>
       ) : null}
+      <footer className="lab-statusbar">
+        <span><GitBranch size={14} aria-hidden="true" /> main</span>
+        <span>Simulated workspace</span>
+        <span>{languages[file]}</span>
+      </footer>
     </div>
   );
 }
@@ -274,17 +382,21 @@ export default function WorkspaceModule({ onInterview }: { onInterview: (task: I
         ))}
       </ol>
       {session ? <ProjectWorkspace session={session} onChange={commit} onInterview={onInterview} /> : (
-        <div className="panel lab-import">
-          <FolderOpen size={24} aria-hidden="true" />
-          <h2>Import the starter project</h2>
-          <p>Clone the provided repository into this simulated workspace.</p>
-          <label htmlFor="lab-repository">Demo repository URL</label>
-          <div>
-            <input id="lab-repository" readOnly value={repository} />
-            <button className="button primary" onClick={() => commit(createWorkspaceSession())} type="button">
-              Clone project <ChevronRight size={16} aria-hidden="true" />
-            </button>
+        <div className="lab-workbench">
+          <WorkbenchTitle />
+          <div className="lab-import">
+            <FolderOpen size={27} aria-hidden="true" />
+            <h2>Import the starter project</h2>
+            <p>Clone the provided repository into this simulated workspace.</p>
+            <label htmlFor="lab-repository">Demo repository URL</label>
+            <div>
+              <input id="lab-repository" readOnly value={repository} />
+              <button className="button primary" onClick={() => commit(createWorkspaceSession())} type="button">
+                Clone project <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            </div>
           </div>
+          <footer className="lab-statusbar"><span>No project open</span></footer>
         </div>
       )}
     </section>
