@@ -164,3 +164,50 @@ export function makeInterviewReport(): InterviewReport {
     ],
   };
 }
+
+const bookingEvidence = "Cancel at least 36 hours before the workshop.";
+export const questSource = `[Page 1]
+${bookingEvidence} Each workshop lasts 60 minutes. Tickets are available online.
+Select a workshop, enter contact details, then confirm your booking.`;
+
+export function makeQuest(): NonNullable<LearningBundle["quest"]> {
+  const room = {
+    prompt: "Restore the workshop guide.",
+    hint: "Check the workshop policy.",
+    explanation: "The workshop guide explains the rules.",
+    evidence: bookingEvidence,
+  };
+  return {
+    title: "Recover the workshop guide",
+    mission: "Repair the guide before the registration desk opens.",
+    rooms: [
+      {
+        ...room, kind: "match", title: "Find the rules",
+        pairs: [
+          { term: "Cancellation notice", meaning: "At least 36 hours" },
+          { term: "Workshop duration", meaning: "60 minutes" },
+          { term: "Ticket sales", meaning: "Online" },
+        ],
+      },
+      {
+        ...room, kind: "order", title: "Restore booking",
+        steps: ["Select a workshop", "Enter contact details", "Confirm your booking"],
+        evidence: "Select a workshop, enter contact details, then confirm your booking.",
+      },
+      {
+        ...room, kind: "detective", title: "Audit the draft",
+        claims: ["Workshops last one hour.", "The deadline is 24 hours.", "Tickets can be bought online."],
+        falseIndex: 1,
+        otherExcerpts: ["Each workshop lasts 60 minutes.", "Tickets are available online."],
+        corrections: ["Require 12 hours of notice.", "Require 24 hours of notice.", "Require 36 hours of notice."],
+        correctIndex: 2,
+      },
+      {
+        ...room, kind: "apply", title: "Open registration",
+        prompt: "A learner wants to cancel 40 hours before the workshop.",
+        options: ["Decline the request", "Allow the cancellation", "Wait until the workshop starts"],
+        correctIndex: 1,
+      },
+    ],
+  };
+}

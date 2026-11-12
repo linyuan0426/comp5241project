@@ -1,0 +1,323 @@
+.quest-page {
+  --quest-night: #102232;
+  --quest-paper: #fffdf6;
+  --quest-line: #d8e2df;
+  --quest-muted: #526572;
+  --quest-ink: #172e3b;
+  --quest-teal: #21665c;
+  --quest-gold: #ffd38b;
+  display: grid;
+  gap: 18px;
+  max-width: 1120px;
+  margin-inline: auto;
+  color: var(--quest-ink);
+}
+
+.quest-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 20px;
+  min-height: 180px;
+  padding: clamp(20px, 4vw, 42px);
+  border-radius: 22px;
+  color: #fff;
+  background:
+    repeating-radial-gradient(ellipse at 94% 8%, #9cd6ba14 0 1px, transparent 2px 20px),
+    radial-gradient(ellipse at top right, #2a665f, transparent 74%),
+    var(--quest-night);
+}
+
+.quest-banner-copy { max-width: 64ch; }
+.quest-banner h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  line-height: 1.07;
+  overflow-wrap: anywhere;
+}
+.quest-banner p { margin: 0; color: #d8e9e5; overflow-wrap: anywhere; }
+.quest-banner p:first-child, .quest-tray h3, .quest-solved strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.quest-banner p:first-child { color: var(--quest-gold); font-weight: 700; }
+
+.quest-inventory {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #a9d7c34d;
+  border-radius: 14px;
+  background: #0c1d2be6;
+}
+.quest-inventory strong { color: #e0eee8; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+.quest-key-slots { display: flex; gap: 6px; }
+.quest-key-slots span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px dashed #6f9392;
+  border-radius: 8px;
+  color: #88a3a6;
+}
+.quest-key-slots [data-collected="true"] {
+  border: 1px solid #c9a26b;
+  color: var(--quest-gold);
+  background: #4b3d29;
+  animation: quest-key-found 240ms ease-out;
+}
+@keyframes quest-key-found { from { transform: scale(.83); } to { transform: scale(1); } }
+
+.quest-map {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 16px 0 14px;
+  border: 1px solid var(--quest-line);
+  border-radius: 18px;
+  list-style: none;
+  background: #edf3ef;
+}
+.quest-map li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 0 7px;
+  text-align: center;
+  color: var(--quest-muted);
+  overflow-wrap: anywhere;
+}
+.quest-map li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 21px;
+  left: calc(50% + 23px);
+  width: calc(100% - 46px);
+  border-top: 2px dashed #9cb0ab;
+}
+.quest-map li[data-solved="true"]::after { border-top: 2px solid var(--quest-teal); }
+.quest-map-node {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border: 2px solid #b8c9c3;
+  border-radius: 13px 13px 9px 9px;
+  background: #f6faf7;
+}
+.quest-map-label { font-size: .92rem; font-weight: 700; }
+.quest-map small { font-size: .76rem; }
+.quest-map li[aria-current] { color: #16554a; }
+.quest-map [aria-current] .quest-map-node {
+  border-color: var(--quest-teal);
+  color: #fff;
+  background: var(--quest-teal);
+  box-shadow: 0 0 0 4px #bfded3;
+}
+.quest-map [data-solved="true"] .quest-map-node {
+  border-color: #7ea99c;
+  color: #16554a;
+  background: #d9eee5;
+}
+
+.quest-room {
+  --room-accent: #21665c;
+  --room-soft: #e5f1eb;
+  display: grid;
+  gap: 18px;
+  padding: clamp(16px, 3vw, 30px);
+  border: 1px solid var(--quest-line);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 12px 36px #132c3311;
+  overflow-wrap: anywhere;
+}
+.quest-room[data-kind="order"] { --room-accent: #375a8f; --room-soft: #eaf0fa; }
+.quest-room[data-kind="detective"] { --room-accent: #835015; --room-soft: #fbefdb; }
+.quest-room[data-kind="apply"], .quest-finish { --room-accent: #4e3a82; --room-soft: #eee9f9; }
+.quest-room-heading { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.quest-room-heading > div { min-width: 0; }
+.quest-room-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  color: var(--room-accent);
+  background: var(--room-soft);
+}
+.quest-room-heading .eyebrow { margin: 0 0 4px; color: var(--room-accent); }
+.quest-room-heading h2 { margin: 0; font-size: clamp(1.4rem, 3vw, 2rem); }
+.quest-room-heading p:last-child { margin: 6px 0 0; color: var(--quest-muted); }
+.quest-room > button { justify-self: start; }
+
+.quest-match, .quest-detective {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.quest-tray, .quest-options {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--quest-line);
+  border-radius: 13px;
+  background: #f3f7f4;
+}
+.quest-tray h3, .quest-options legend {
+  margin: 0;
+  color: var(--quest-ink);
+  font-size: .9rem;
+  font-weight: 750;
+}
+.quest-tray h3 { padding-bottom: 4px; }
+.quest-clue-tray { background: #eaf3ef; }
+
+.quest-choice {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 12px 11px 31px;
+  border: 1px solid var(--quest-line);
+  border-radius: 9px;
+  color: var(--quest-ink);
+  background: #fff;
+  box-shadow: 0 2px 0 #142c3110;
+  text-align: start;
+  overflow-wrap: anywhere;
+  transition: background 130ms, border-color 130ms, box-shadow 130ms;
+}
+.quest-choice::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: 12px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #899e9f;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.quest-choice:hover:not(:disabled), .quest-choice[aria-pressed="true"] {
+  border-color: var(--room-accent);
+  background: var(--room-soft);
+}
+.quest-choice:focus-visible { outline: 3px solid var(--room-accent); outline-offset: 2px; }
+.quest-choice[aria-pressed="true"]::before, .quest-choice[data-linked="true"]::before {
+  border-color: var(--room-accent);
+  background: var(--room-accent);
+}
+.quest-choice[data-linked="true"] { border-color: #9bbfb1; }
+.quest-choice:disabled { cursor: default; opacity: .75; }
+.quest-choice small { color: var(--quest-teal); }
+
+.quest-route { background: #eff4fb; }
+.quest-route ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: quest-slot;
+}
+.quest-route li {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  counter-increment: quest-slot;
+}
+.quest-route li::before {
+  content: counter(quest-slot);
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--room-accent);
+  font-size: .75rem;
+  font-weight: 700;
+}
+.quest-empty-slot {
+  display: grid;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px dashed #8da3bc;
+  border-radius: 8px;
+  color: var(--quest-muted);
+  font-size: .83rem;
+}
+.quest-route p { margin: 0; color: var(--quest-muted); font-size: .82rem; }
+
+.quest-detective {
+  padding: 12px;
+  border: 1px solid #e5d4b8;
+  border-radius: 16px;
+  background: radial-gradient(#b192623d 1px, transparent 1px) 0 0 / 14px 14px, #f5ead8;
+}
+.quest-detective .quest-options {
+  border-color: #dfccac;
+  background: var(--quest-paper);
+}
+.quest-detective .quest-choice { border-color: #dfd5c5; }
+.quest-detective > :first-child { grid-column: 1 / -1; background: #fff8ea; }
+
+.quest-final .quest-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: #f5f2fa;
+}
+.quest-final .quest-choice { min-height: 84px; align-content: start; padding-top: 14px; }
+
+.quest-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.quest-puzzle-actions { justify-content: space-between; padding-top: 14px; border-top: 1px solid var(--quest-line); }
+.quest-room .button.primary { border-color: var(--room-accent); background: var(--room-accent); }
+.quest-room .button.primary:hover:not(:disabled) { filter: brightness(.9); }
+.quest-room .quest-hint, .quest-room .quest-feedback, .quest-solved {
+  margin: 0;
+  padding: 14px;
+  border-radius: 10px;
+}
+.quest-room .quest-hint { background: var(--room-soft); color: var(--room-accent); }
+.quest-room .quest-feedback { background: #fff0ed; color: #922d23; }
+.quest-solved { border: 1px solid #b6d7c8; background: #eaf6ef; }
+.quest-solved strong { color: var(--quest-teal); }
+.quest-room blockquote {
+  margin: 0;
+  padding-inline-start: 10px;
+  border-inline-start: 3px solid var(--room-accent);
+  color: var(--quest-muted);
+}
+.quest-recap { display: grid; gap: 8px; }
+.quest-recap details { padding: 12px; border: 1px solid var(--quest-line); border-radius: 10px; }
+.quest-recap summary { cursor: pointer; font-weight: 650; }
+.quest-recap summary span { margin-inline-start: 8px; color: var(--quest-muted); font-size: .82rem; font-weight: 500; }
+
+@media (max-width: 640px) {
+  .quest-banner { grid-template-columns: minmax(0, 1fr); }
+  .quest-inventory { justify-self: start; }
+  .quest-map li:not(:last-child)::after { width: calc(100% - 36px); left: calc(50% + 18px); top: 17px; }
+  .quest-map-node { width: 36px; height: 36px; }
+  .quest-map-label { font-size: .77rem; }
+  .quest-detective, .quest-final .quest-options { grid-template-columns: minmax(0, 1fr); }
+  .quest-final .quest-choice { min-height: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quest-key-slots [data-collected="true"] { animation: none; }
+  .quest-choice { transition: none; }
+}

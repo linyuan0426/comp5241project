@@ -8,7 +8,9 @@ import {
   Code2,
   FileText,
   GraduationCap,
+  KeyRound,
   ListChecks,
+  Map,
   RotateCcw,
   Sparkles,
   Target,
@@ -25,6 +27,8 @@ import InterviewModule from "./features/interview/InterviewModule";
 import { loadTaskBrief, saveTaskBrief } from "./features/interview/storage";
 import type { InterviewTask } from "./features/interview/types";
 import WorkspaceModule from "./features/workspace/WorkspaceModule";
+import KnowledgeQuest from "./features/learning/KnowledgeQuest";
+import { newQuestProgress } from "./features/learning/quest-data";
 import DocumentReview from "./features/learning/DocumentReview";
 import ScenarioChallenge from "./features/learning/ScenarioChallenge";
 import { generateLearningBundle, recognizePageImages } from "./lib/ai";
@@ -49,6 +53,7 @@ import type {
 const STEPS: Array<{ id: Step; label: string; icon: typeof UploadCloud }> = [
   { id: "upload", label: "Upload", icon: UploadCloud },
   { id: "plan", label: "Learning plan", icon: ListChecks },
+  { id: "quest", label: "Knowledge Quest", icon: Map },
   { id: "quiz", label: "Quiz", icon: CircleHelp },
   { id: "progress", label: "Progress", icon: Target },
 ];
@@ -149,7 +154,7 @@ function StagePlan({ bundle, onToggleTask, onContinue }: StagePlanProps) {
             {planProgress.completed} of {planProgress.total} tasks complete
           </p>
           <button className="button primary" onClick={onContinue} type="button">
-            Continue to quiz
+            {bundle.quest ? "Play Knowledge Quest" : "Continue to quiz"}
             <ChevronRight size={18} />
           </button>
         </div>
@@ -357,6 +362,7 @@ type ProgressViewProps = {
   learning: LearningState;
   onReviewPlan: () => void;
   onReviewQuiz: () => void;
+  onReviewQuest: () => void;
   onReset: () => void;
 };
 
@@ -364,11 +370,14 @@ function ProgressView({
   learning,
   onReviewPlan,
   onReviewQuiz,
+  onReviewQuest,
   onReset,
 }: ProgressViewProps) {
   const plan = getPlanProgress(learning.bundle);
   const quiz = getQuizStats(learning.bundle.quiz);
   const overall = getOverallProgress(learning);
+  const quest = learning.bundle.quest;
+  const solvedRooms = learning.questProgress?.filter((room) => room.solved).length ?? 0;
   const missedQuestions = learning.bundle.quiz.filter(
     (question) =>
       question.selectedIndex !== undefined &&
@@ -382,8 +391,8 @@ function ProgressView({
           <p className="eyebrow">Learning snapshot</p>
           <h1>Keep the momentum going.</h1>
           <p>
-            Your progress combines completed study tasks and quiz participation. Every
-            answer is another chance to sharpen your understanding.
+            {quest ? "Your progress combines completed study tasks and rooms solved in Knowledge Quest."
+              : "Your progress combines completed study tasks and quiz participation."}
           </p>
           {learning.document.filePath ? (
             <CourseFileDownload path={learning.document.filePath} name={learning.document.name} />
@@ -414,12 +423,21 @@ function ProgressView({
           <strong>{quiz.percent}%</strong>
           <p>{quiz.correct} correct, {quiz.incorrect} incorrect</p>
         </article>
+        {quest ? (
+          <article className="stat-card teal">
+            <KeyRound size={22} />
+            <span>Quest rooms</span>
+            <strong>{solvedRooms}/{quest.rooms.length}</strong>
+            <button className="text-button" onClick={onReviewQuest} type="button">Review quest</button>
+          </article>
+        ) : (
         <article className="stat-card teal">
           <Zap size={22} />
           <span>Knowledge checks</span>
           <strong>{quiz.answered}/{quiz.total}</strong>
           <p>Questions answered</p>
         </article>
+        )}
       </section>
 
       <div className="progress-columns">
@@ -534,7 +552,7 @@ export default function App({ account }: { account?: AccountControls }) {
       return;
     }
 
-    if (!learning) return;
+    if (!learning || (step === "quest" && !learning.bundle.quest)) return;
     if (step === "quiz") {
       const next = getNextQuestionIndex(learning.bundle.quiz);
       setQuizIndex(next === -1 ? learning.bundle.quiz.length : next);
@@ -766,7 +784,41 @@ export default function App({ account }: { account?: AccountControls }) {
     navigate("quiz");
   }
 
-  const currentStepIndex = STEPS.findIndex((step) => step.id === view);
+  function recordQuestAttempt(index: number, solved: boolean) {
+    const current = latestLearning.current;
+    if (!current?.bundle.quest) return;
+    const progress = current.questProgress ?? newQuestProgress(current.bundle.quest);
+    if (progress.findIndex((entry) => !entry.solved) !== index) return;
+    commitLearning({
+      ...current,
+      questProgress: progress.map((entry, roomIndex) =>
+        roomIndex === index ? { solved, misses: entry.misses + Number(!solved) } : entry),
+    });
+  }
+
+  function replayQuest() {
+    if (learning?.bundle.quest) {
+      commitLearning({ ...learning, questProgress: newQuestProgress(learning.bundle.quest) });
+    }
+  }
+
+  function openQuestInterview() {
+    const quest = learning?.bundle.quest;
+    if (!quest || !learning.questProgress?.every((entry) => entry.solved)) return;
+    const detective = quest.rooms[2];
+    startTaskInterview({
+      kind: "scenario",
+      focus: "source-verification",
+      title: quest.title,
+      decision: `Flagged the claim “${detective.claims[detective.falseIndex]}”.`,
+      result: detective.corrections[detective.correctIndex],
+      evidence: [detective.evidence, quest.rooms[3].evidence],
+    });
+  }
+
+  const quest = learning?.bundle.quest;
+  const steps = STEPS.filter((step) => step.id !== "quest" || quest);
+  const currentStepIndex = steps.findIndex((step) => step.id === view);
   const planSnapshot = learning ? getPlanProgress(learning.bundle) : null;
   const reviewedCharacters = draft ? countDocumentCharacters(draft.pages) : 0;
   const characterLimitExceeded = reviewedCharacters > DOCUMENT_LIMITS.maxCharacters;
@@ -786,11 +838,13 @@ export default function App({ account }: { account?: AccountControls }) {
 
         <nav className="main-nav" aria-label="Learning workflow">
           <p className="nav-label">Learning studio</p>
-          {STEPS.map((step, index) => {
+          {steps.map((step, index) => {
             const Icon = step.icon;
             const available = step.id === "upload" || Boolean(learning);
             const complete =
-              index < currentStepIndex && (step.id !== "plan" || (planSnapshot?.percent ?? 0) === 100);
+              step.id === "quest" ? Boolean(learning?.questProgress?.every((room) => room.solved))
+                : step.id === "quiz" ? Boolean(learning?.bundle.quiz.every((question) => question.selectedIndex !== undefined))
+                : index < currentStepIndex && (step.id !== "plan" || (planSnapshot?.percent ?? 0) === 100);
             return (
               <button
                 aria-current={section === "learning" && view === step.id ? "step" : undefined}
@@ -870,7 +924,7 @@ export default function App({ account }: { account?: AccountControls }) {
             </span>
             <ChevronRight size={14} />
             <strong>
-              {section === "learning" ? STEPS.find((step) => step.id === view)?.label
+              {section === "learning" ? steps.find((step) => step.id === view)?.label
                 : inInterview ? interviewTask ? "Task Interview" : "Mock Interview"
                 : section === "challenge" ? "Scenario Challenge" : "Virtual Workspace"}
             </strong>
@@ -928,8 +982,8 @@ export default function App({ account }: { account?: AccountControls }) {
                 </div>
                 <h1>Turn course notes into <span>active knowledge.</span></h1>
                 <p>
-                  Upload a PDF or PPTX and let AI build a focused study plan, then test your
-                  understanding with instant, source-grounded feedback.
+                  Upload a PDF or PPTX to build a study plan and turn your course material
+                  into a puzzle quest with feedback grounded in the original text.
                 </p>
                 {account ? <p>
                   {account.userId
@@ -939,7 +993,7 @@ export default function App({ account }: { account?: AccountControls }) {
                 <div className="feature-pills">
                   <span><Check size={14} /> AI summary</span>
                   <span><Check size={14} /> Guided plan</span>
-                  <span><Check size={14} /> Instant quiz</span>
+                  <span><Check size={14} /> Knowledge Quest</span>
                 </div>
                 <button className="text-button" onClick={() => switchSection("challenge")} type="button">
                   Try scenario challenge
@@ -1051,7 +1105,7 @@ export default function App({ account }: { account?: AccountControls }) {
                     <span className="spinner" />
                     <div>
                       <strong>Building your study kit</strong>
-                      <p>Summarizing concepts, sequencing practice, and writing quiz questions.</p>
+                      <p>Building your plan, quiz and document-based game.</p>
                     </div>
                   </div>
                 ) : null}
@@ -1089,9 +1143,20 @@ export default function App({ account }: { account?: AccountControls }) {
           {view === "plan" && learning ? (
               <StagePlan
                 bundle={learning.bundle}
-                onContinue={openQuiz}
+                onContinue={() => navigate(quest ? "quest" : "quiz")}
                 onToggleTask={toggleTask}
               />
+          ) : null}
+
+          {view === "quest" && quest && learning ? (
+            <KnowledgeQuest
+              quest={quest}
+              progress={learning.questProgress ?? newQuestProgress(quest)}
+              onAttempt={recordQuestAttempt}
+              onReplay={replayQuest}
+              onFinish={() => navigate("progress")}
+              onInterview={openQuestInterview}
+            />
           ) : null}
 
           {view === "quiz" && learning ? (
@@ -1116,6 +1181,7 @@ export default function App({ account }: { account?: AccountControls }) {
               onReset={resetDemo}
               onReviewPlan={() => navigate("plan")}
               onReviewQuiz={openQuiz}
+              onReviewQuest={() => navigate("quest")}
             />
           ) : null}
             </>

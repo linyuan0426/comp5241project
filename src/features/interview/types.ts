@@ -15,6 +15,7 @@ export type InterviewQuestionId = (typeof interviewQuestionIds)[number];
 
 export const interviewTaskSchema = z.object({
   kind: z.enum(["workspace", "scenario"]),
+  focus: z.literal("source-verification").optional(),
   scenarioId: z.enum(scenarioIds).optional(),
   title: z.string().min(1),
   decision: z.string().min(1),

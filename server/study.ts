@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasSourceEvidence, questSchema } from "../src/features/learning/quest-data.ts";
 import type { LearningBundle } from "../src/types.ts";
 
 import { requestCompletion, ProviderError, type AiProvider } from "./provider.ts";
@@ -16,6 +17,7 @@ const rawLearningBundleSchema = z.object({
       }),
     )
     .length(3),
+  quest: questSchema.nullable(),
   quiz: z
     .array(
       z.object({
@@ -51,6 +53,7 @@ export function normalizeLearningBundle(
     title: raw.title,
     summary: raw.summary,
     objectives: raw.objectives,
+    ...(raw.quest ? { quest: raw.quest } : {}),
     plan: raw.plan.map((stage, stageIndex) => ({
       id: makeId("stage", stageIndex),
       title: stage.title,
@@ -71,7 +74,7 @@ export function normalizeLearningBundle(
   };
 }
 
-function parseModelContent(content: unknown) {
+function parseModelContent(content: unknown, sourceText: string) {
   if (typeof content !== "string" || content.trim().length === 0) {
     throw new ProviderError("DeepSeek returned an empty response. Please try again.");
   }
@@ -82,7 +85,11 @@ function parseModelContent(content: unknown) {
     .replace(/\s*```$/, "");
 
   try {
-    return normalizeLearningBundle(JSON.parse(cleaned));
+    const bundle = normalizeLearningBundle(JSON.parse(cleaned));
+    if (bundle.quest && !hasSourceEvidence(bundle.quest, sourceText)) {
+      throw new ProviderError("The game could not be verified against your document. Please retry generation.");
+    }
+    return bundle;
   } catch (error) {
     if (error instanceof ProviderError) throw error;
     throw new ProviderError(
@@ -108,6 +115,7 @@ Return only valid JSON with this exact shape:
       "tasks": ["2 to 3 specific study tasks"]
     }
   ],
+  "quest": { "title": "short game title", "mission": "brief fictional objective tied to the topic", "rooms": [] },
   "quiz": [
     {
       "prompt": "question",
@@ -122,6 +130,12 @@ Rules:
 - Include exactly 3 plan stages and exactly 5 quiz questions.
 - Each stage must have 2 or 3 tasks.
 - Each quiz must have exactly 4 distinct options and one answerIndex from 0 to 3.
+- For quest.rooms, produce exactly four rooms in this order. Every room has kind, title, prompt, hint, explanation and evidence. Keep room titles short, and each room text field under 500 characters. A hint should direct the learner without stating the answer.
+  1. kind "match": add pairs, an array of 3 or 4 unique { "term": "...", "meaning": "..." } objects. Each term and meaning must have a unique partner.
+  2. kind "order": add steps, an array of 3 or 4 distinct strings IN THE CORRECT ORDER. Use only a sequence explicitly supported by the material. If there is no clear sequence, use a second "match" room with new examples and distinct concepts.
+  3. kind "detective": add claims (3 distinct statements presented as an AI draft with exactly one contradicted by the document), falseIndex (zero-based), corrections (3 distinct rewrites of the incorrect claim), correctIndex (zero-based index of the only supported rewrite), and otherExcerpts (2 different authentic document excerpts that do not resolve the disputed claim).
+  4. kind "apply": write a brief scenario in prompt that applies the mission's concepts. Add options (3 distinct actions) and correctIndex (zero-based index of the only best action). Tie this scenario to the earlier rooms.
+- Each evidence string and each otherExcerpts string must be a continuous verbatim excerpt from a single page, with no page labels, paraphrasing, quotation marks added, or ellipses. The detective evidence must directly contradict the false claim and support its correction. Choose excerpts short enough to display but long enough to justify the answer. If the document has too little usable content for four supported rooms, return "quest": null.
 - Ground every learning item in the supplied document. Do not invent unsupported facts.
 - Use the page labels as source context when present.
 - Use the document's primary language.
@@ -129,7 +143,7 @@ Rules:
 
   const requestBody = {
     temperature: 0.2,
-    max_tokens: 2600,
+    max_tokens: 4900,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
@@ -140,7 +154,7 @@ Rules:
     ],
   };
 
-  return parseModelContent(await requestCompletion(provider, requestBody));
+  return parseModelContent(await requestCompletion(provider, requestBody), sourceText);
 }
 
 export async function recognizePageImages(provider: AiProvider, images: string[], nativeText: string) {

@@ -1,4 +1,6 @@
-export type Step = "upload" | "plan" | "quiz" | "progress";
+import type { Quest, QuestProgress } from "./features/learning/quest-data";
+
+export type Step = "upload" | "plan" | "quest" | "quiz" | "progress";
 
 export type PlanTask = {
   id: string;
@@ -28,6 +30,7 @@ export type LearningBundle = {
   objectives: string[];
   plan: PlanStage[];
   quiz: QuizQuestion[];
+  quest?: Quest;
 };
 
 export type DocumentMeta = {
@@ -41,6 +44,7 @@ export type LearningState = {
   version: 1;
   document: DocumentMeta;
   bundle: LearningBundle;
+  questProgress?: QuestProgress;
   currentStep: Exclude<Step, "upload">;
 };
 

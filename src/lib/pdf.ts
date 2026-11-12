@@ -2,11 +2,11 @@ import type { DocumentPage, ExtractedDocument } from "../types";
 import { countDocumentCharacters, DOCUMENT_LIMITS } from "./document";
 
 async function getPdfLibrary() {
-  const [pdfjs, worker] = await Promise.all([
-    import("pdfjs-dist/legacy/build/pdf.mjs"),
-    import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url"),
-  ]);
-  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).href;
   return pdfjs;
 }
 

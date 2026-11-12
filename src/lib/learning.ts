@@ -30,8 +30,10 @@ export function getQuizStats(questions: QuizQuestion[]) {
 export function getOverallProgress(state: LearningState) {
   const plan = getPlanProgress(state.bundle);
   const quiz = getQuizStats(state.bundle.quiz);
-  const completed = plan.completed + quiz.answered;
-  const total = plan.total + quiz.total;
+  const quest = state.bundle.quest;
+  const practiced = quest ? (state.questProgress?.filter((entry) => entry.solved).length ?? 0) : quiz.answered;
+  const completed = plan.completed + practiced;
+  const total = plan.total + (quest?.rooms.length ?? quiz.total);
 
   return total === 0 ? 0 : Math.round((completed / total) * 100);
 }

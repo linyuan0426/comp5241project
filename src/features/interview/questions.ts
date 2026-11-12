@@ -95,6 +95,26 @@ export function getSessionQuestions(session: InterviewSession) {
 }
 
 export function createTaskQuestions(task: InterviewTask): InterviewQuestion[] {
+  if (task.focus === "source-verification") {
+    return [
+      {
+        id: "coding-reasoning",
+        topic: "Verify an AI claim",
+        prompt: `In ${task.title}, you ${task.decision.replace(/^Flagged/, "flagged")} Which part of the source contradicts the claim, and how did it inform your correction?`,
+        demoFollowUp: "Which word, number, or condition in the excerpt makes your correction more precise?",
+        signals: ["claim", "evidence", "source", "correct", "condition"],
+        improvement: "Quote the relevant detail, explain the conflict, and state the corrected claim.",
+      },
+      {
+        id: "debugging",
+        topic: "Check a new claim",
+        prompt: "How would you check another AI claim if the course material gives only partial evidence?",
+        demoFollowUp: "What would you tell a reader if you could only verify one part of the answer?",
+        signals: ["verify", "source", "evidence", "uncertain", "check"],
+        improvement: "Describe which claims the evidence supports and what you would check next.",
+      },
+    ];
+  }
   const workspace = task.kind === "workspace";
   const scenario = scenarioCases[task.scenarioId ?? "discount"];
   return [

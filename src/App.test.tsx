@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { loadLearningState, saveLearningState } from "./lib/storage";
-import { makeBundle } from "./test/fixtures";
+import { makeBundle, makeQuest } from "./test/fixtures";
 
 const { extractPdfMock, generateBundleMock, recognizeImagesMock, uploadCourseFileMock } = vi.hoisted(() => ({
   extractPdfMock: vi.fn(),
@@ -145,6 +145,54 @@ describe("learning demo workflow", () => {
         screen.getByRole("heading", { name: "Keep the momentum going." }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("unlocks generated quest rooms, resumes after reload, and opens an evidence-based interview", async () => {
+    const user = userEvent.setup();
+    generateBundleMock.mockResolvedValueOnce({ ...makeBundle(), quest: makeQuest() });
+    const first = render(<App />);
+    const click = async (name: string) => user.click(screen.getByRole("button", { name }));
+
+    await click("Load sample");
+    await user.click(await screen.findByRole("button", { name: "Generate study kit" }));
+    await user.click(await screen.findByRole("button", { name: "Play Knowledge Quest" }));
+    expect(screen.getByRole("button", { name: "Check solution" })).toBeDisabled();
+
+    for (const [concept, meaning] of [
+      ["Cancellation notice", "At least 36 hours"],
+      ["Workshop duration", "60 minutes"],
+      ["Ticket sales", "Online"],
+    ]) {
+      await click(concept);
+      await click(meaning);
+    }
+    await click("Check solution");
+    expect(screen.getByText("1/4 keys")).toBeInTheDocument();
+    first.unmount();
+    render(<App />);
+    expect(screen.getByRole("heading", { name: "Restore booking" })).toBeInTheDocument();
+
+    for (const step of ["Select a workshop", "Enter contact details", "Confirm your booking"]) await click(step);
+    await click("Check solution");
+    await click("Unlock next room");
+
+    await click("The deadline is 24 hours.");
+    await click("Tickets are available online.");
+    await click("Require 36 hours of notice.");
+    await click("Check solution");
+    expect(screen.getByText(/some choices need another look/i)).toBeInTheDocument();
+    expect(screen.getByText("2/4 keys")).toBeInTheDocument();
+    await click("Cancel at least 36 hours before the workshop.");
+    await click("Check solution");
+    await click("Unlock next room");
+
+    await click("Allow the cancellation");
+    await click("Check solution");
+    await click("See quest results");
+    expect(screen.getByRole("heading", { name: "Mission complete" })).toBeInTheDocument();
+    expect(screen.getByText("Review suggested")).toBeInTheDocument();
+    await click("Explain your reasoning");
+    expect(screen.getByText(/flagged the claim/i)).toBeInTheDocument();
   });
 
   it("shows a clear validation error without clearing the current draft", async () => {

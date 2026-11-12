@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { LearningState } from "../types";
 import { guestProgress, type ProgressStorage } from "../features/account/progress-storage";
+import { questProgressSchema, questSchema } from "../features/learning/quest-data";
 
 export const LEARNING_STORAGE_KEY = "genai-learning-demo:v1";
 
@@ -47,8 +48,10 @@ const learningStateSchema = z.object({
     objectives: z.array(z.string().min(1)).min(1),
     plan: z.array(planStageSchema).min(1),
     quiz: z.array(quizQuestionSchema).min(1),
+    quest: questSchema.optional(),
   }),
-  currentStep: z.enum(["plan", "quiz", "progress"]),
+  questProgress: questProgressSchema.optional(),
+  currentStep: z.enum(["plan", "quest", "quiz", "progress"]),
 });
 
 export function loadLearningState(storage: ProgressStorage = guestProgress): LearningState | null {
@@ -57,7 +60,10 @@ export function loadLearningState(storage: ProgressStorage = guestProgress): Lea
     if (!stored) return null;
 
     const parsed = learningStateSchema.safeParse(JSON.parse(stored));
-    return parsed.success ? (parsed.data as LearningState) : null;
+    if (!parsed.success) return null;
+    const state = parsed.data as LearningState;
+    if (state.currentStep === "quest" && !state.bundle.quest) state.currentStep = "plan";
+    return state;
   } catch {
     return null;
   }

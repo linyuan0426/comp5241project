@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makeBundle } from "../test/fixtures";
+import { makeBundle, makeQuest, questSource } from "../test/fixtures";
 import {
   generateLearningBundle,
   normalizeLearningBundle,
@@ -12,6 +12,7 @@ const provider: AiProvider = { name: "deepseek", key: "sk-test", model: "deepsee
 function rawBundle() {
   return {
     title: "Reliable Software Foundations",
+    quest: null,
     summary:
       "A source-grounded learning path that connects change visibility, clear function contracts, automated testing, and predictable API integration behavior for software engineering students.",
     objectives: ["Trace a focused change.", "Design boundaries.", "Use tests for feedback."],
@@ -58,18 +59,20 @@ describe("DeepSeek learning generation", () => {
   });
 
   it("sends JSON mode to deepseek-flash and returns a validated pack", async () => {
+    const quest = makeQuest();
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          choices: [{ message: { content: JSON.stringify(rawBundle()) } }],
+          choices: [{ message: { content: JSON.stringify({ ...rawBundle(), quest }) } }],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await generateLearningBundle(provider, "Source course text");
+    const result = await generateLearningBundle(provider, questSource);
     expect(result.title).toBe("Reliable Software Foundations");
+    expect(result.quest).toEqual(quest);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body));
@@ -80,6 +83,15 @@ describe("DeepSeek learning generation", () => {
       "Bearer sk-test",
     );
     expect(String(body.messages[1].content)).toContain("<source_document>");
+  });
+
+  it("rejects a detective puzzle when an evidence card is absent from the source", async () => {
+    const quest = makeQuest();
+    quest.rooms[2].otherExcerpts[1] = "Tickets must be bought at the door.";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ ...rawBundle(), quest }) } }],
+    }))));
+    await expect(generateLearningBundle(provider, questSource)).rejects.toThrow("verified against your document");
   });
 
   it("sends inline page images using the vision model", async () => {
