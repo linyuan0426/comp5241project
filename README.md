@@ -6,10 +6,11 @@ that can use the learner's practice decisions.
 
 ## Set up Supabase
 
-1. Create a Supabase project. In **SQL Editor**, run the complete migration
-   in [202611100001_pathwise.sql](supabase/migrations/202611100001_pathwise.sql)
-   once. It creates the progress table, per-account AI quota, and private
-   `pathwise-course-files` bucket with access rules.
+1. Create a Supabase project. In **SQL Editor**, run these migrations once,
+   in filename order: [202611100001_pathwise.sql](supabase/migrations/202611100001_pathwise.sql)
+   and [202611120001_fun_practice_progress.sql](supabase/migrations/202611120001_fun_practice_progress.sql).
+   They create the progress table, per-account AI quota, private course-file
+   storage, and the progress key used by Fun Practice.
 2. Enable the Email provider. For self-service registration, enable **Allow new
    users to sign up** and keep **Confirm Email** enabled. In **Authentication →
    URL Configuration**, add the local app URL (typically `http://localhost:5173/`)
@@ -51,6 +52,18 @@ confirmation email if required. Upload a PDF or PPTX, or choose **Load sample**.
 Review the extracted text and select **Recognize images on this page** when
 needed, then generate a study kit. Account settings show sync status and offer
 an explicit **Copy guest progress** action for records without a cloud version.
+
+Open **Fun Practice** to try twelve offline role-play stories presented as
+three study group chats. The collection covers cache freshness, asynchronous
+responses, atomic transactions, and credential storage. Learners can quote a
+doubtful claim, nudge the AI, reply in the group, and resolve team incidents as
+group polls. Signed-in learners can generate an AI conversation from an
+objective in the current study pack. Every explanation produces a new targeted
+follow-up, and completed or partially completed sessions are saved with the
+learner's other progress.
+Use the **EN / 中文** switch in the top bar to change the interface language.
+The preference is stored on the current device. Course material and AI-generated
+study content keep their source language.
 
 ## Deploy to Vercel
 

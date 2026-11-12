@@ -21,6 +21,7 @@ const progressKeys = [
   "genai-interview-task-brief:v1",
   "genai-workspace-demo:v1",
   "genai-scenario-discount:v1",
+  "genai-fun-practice:v1",
 ] as const;
 
 const entrySchema = z.object({

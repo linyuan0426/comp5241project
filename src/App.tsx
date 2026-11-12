@@ -20,7 +20,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { lazy, Suspense, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import type { AccountControls } from "./features/account/AccountShell";
 import { useProgressStorage } from "./features/account/progress-storage";
 import InterviewModule from "./features/interview/InterviewModule";
@@ -32,6 +32,7 @@ import { newQuestProgress } from "./features/learning/quest-data";
 import DocumentReview from "./features/learning/DocumentReview";
 import ScenarioChallenge from "./features/learning/ScenarioChallenge";
 import { generateLearningBundle, recognizePageImages } from "./lib/ai";
+import { LanguageSwitch } from "./lib/i18n";
 import { downloadCourseFile, uploadCourseFile } from "./lib/supabase";
 import { countDocumentCharacters, DOCUMENT_LIMITS, joinDocumentPages } from "./lib/document";
 import {
@@ -50,6 +51,8 @@ import type {
   Step,
 } from "./types";
 
+const FunPracticeModule = lazy(() => import("./features/fun-practice/FunPracticeModule"));
+
 const STEPS: Array<{ id: Step; label: string; icon: typeof UploadCloud }> = [
   { id: "upload", label: "Upload", icon: UploadCloud },
   { id: "plan", label: "Learning plan", icon: ListChecks },
@@ -58,7 +61,7 @@ const STEPS: Array<{ id: Step; label: string; icon: typeof UploadCloud }> = [
   { id: "progress", label: "Progress", icon: Target },
 ];
 
-type WorkspaceSection = "learning" | "interview" | "workspace" | "challenge" | "task-interview";
+type WorkspaceSection = "learning" | "fun" | "interview" | "workspace" | "challenge" | "task-interview";
 
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
@@ -69,9 +72,10 @@ type StagePlanProps = {
   bundle: LearningBundle;
   onToggleTask: (stageId: string, taskId: string) => void;
   onContinue: () => void;
+  onPractice: () => void;
 };
 
-function StagePlan({ bundle, onToggleTask, onContinue }: StagePlanProps) {
+function StagePlan({ bundle, onToggleTask, onContinue, onPractice }: StagePlanProps) {
   const planProgress = getPlanProgress(bundle);
 
   return (
@@ -153,10 +157,16 @@ function StagePlan({ bundle, onToggleTask, onContinue }: StagePlanProps) {
           <p>
             {planProgress.completed} of {planProgress.total} tasks complete
           </p>
-          <button className="button primary" onClick={onContinue} type="button">
-            {bundle.quest ? "Play Knowledge Quest" : "Continue to quiz"}
-            <ChevronRight size={18} />
-          </button>
+          <div className="result-actions">
+            <button className="button secondary" onClick={onPractice} type="button">
+              <Zap size={16} />
+              Practice this concept
+            </button>
+            <button className="button primary" onClick={onContinue} type="button">
+              {bundle.quest ? "Play Knowledge Quest" : "Continue to quiz"}
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -519,7 +529,8 @@ export default function App({ account }: { account?: AccountControls }) {
     if (hash === "#workspace") return "workspace";
     if (hash === "#challenge") return "challenge";
     if (hash === "#task-interview") return "task-interview";
-    return hash === "#interview" ? "interview" : "learning";
+    if (hash === "#interview") return "interview";
+    return hash === "#fun" ? "fun" : "learning";
   });
   const [taskBrief, setTaskBrief] = useState(() => loadTaskBrief(storage));
   const [learning, setLearning] = useState<LearningState | null>(() => loadLearningState(storage));
@@ -876,6 +887,17 @@ export default function App({ account }: { account?: AccountControls }) {
         <div className="future-nav">
           <p className="nav-label">Explore</p>
           <button
+            aria-current={section === "fun" ? "page" : undefined}
+            aria-label="Fun Practice"
+            className={`future-item available ${section === "fun" ? "active" : ""}`}
+            onClick={() => switchSection("fun")}
+            type="button"
+          >
+            <Zap size={18} />
+            <div><span>Fun Practice</span><small>Teach, rescue, explain</small></div>
+            <ChevronRight size={14} />
+          </button>
+          <button
             aria-current={section === "interview" ? "page" : undefined}
             aria-label="Mock Interview"
             className={`future-item available ${section === "interview" ? "active" : ""}`}
@@ -925,23 +947,35 @@ export default function App({ account }: { account?: AccountControls }) {
             <ChevronRight size={14} />
             <strong>
               {section === "learning" ? steps.find((step) => step.id === view)?.label
+                : section === "fun" ? "Fun Practice"
                 : inInterview ? interviewTask ? "Task Interview" : "Mock Interview"
                 : section === "challenge" ? "Scenario Challenge" : "Virtual Workspace"}
             </strong>
           </div>
-          {account ? (
-            <button className="account-status" onClick={account.open} type="button">
-              <UserRound size={16} aria-hidden="true" />
-              <span>{account.userId ? "Account" : "Sign in"}</span>
-              {account.userId && account.status === "saving" ? <span>· Saving…</span> : null}
-              {account.userId && (account.status === "offline" || account.status === "conflict")
-                ? <span className="account-sync-alert">· Sync needs attention</span> : null}
-            </button>
-          ) : null}
+          <div className="topbar-actions">
+            <LanguageSwitch />
+            {account ? (
+              <button className="account-status" onClick={account.open} type="button">
+                <UserRound size={16} aria-hidden="true" />
+                <span>{account.userId ? "Account" : "Sign in"}</span>
+                {account.userId && account.status === "saving" ? <span>· Saving…</span> : null}
+                {account.userId && (account.status === "offline" || account.status === "conflict")
+                  ? <span className="account-sync-alert">· Sync needs attention</span> : null}
+              </button>
+            ) : null}
+          </div>
         </header>
 
         <main className="main-content">
-          {section === "workspace" ? (
+          {section === "fun" ? (
+            <Suspense fallback={<div className="panel">Loading practice…</div>}>
+              <FunPracticeModule
+                bundle={learning?.bundle}
+                canUseLive={Boolean(account?.userId)}
+                onSignIn={account?.open}
+              />
+            </Suspense>
+          ) : section === "workspace" ? (
             <WorkspaceModule onInterview={startTaskInterview} />
           ) : section === "challenge" ? (
             <ScenarioChallenge onBack={() => switchSection("learning")} onInterview={startTaskInterview} />
@@ -1144,6 +1178,7 @@ export default function App({ account }: { account?: AccountControls }) {
               <StagePlan
                 bundle={learning.bundle}
                 onContinue={() => navigate(quest ? "quest" : "quiz")}
+                onPractice={() => switchSection("fun")}
                 onToggleTask={toggleTask}
               />
           ) : null}

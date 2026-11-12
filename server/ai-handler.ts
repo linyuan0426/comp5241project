@@ -3,6 +3,12 @@ import { z } from "zod";
 import { interviewSessionSchema } from "../src/features/interview/types.ts";
 import { readServerConfig, type ServerEnvironment } from "./config.ts";
 import { generateInterviewFollowUp, generateInterviewReport } from "./interview.ts";
+import {
+  funPracticeCreateInputSchema,
+  funPracticeReviewInputSchema,
+  generateFunPractice,
+  reviewFunPractice,
+} from "./fun-practice.ts";
 import { ProviderError } from "./provider.ts";
 import { generateLearningBundle, recognizePageImages } from "./study.ts";
 
@@ -24,6 +30,8 @@ const requestSchema = z.discriminatedUnion("action", [
     answer: z.string().trim().min(1).max(4_000),
   }),
   z.object({ action: z.literal("interview-report"), session: interviewSessionSchema }),
+  funPracticeCreateInputSchema,
+  funPracticeReviewInputSchema,
 ]);
 
 function respond(body: object, status = 200) {
@@ -86,6 +94,14 @@ export async function handleAiRequest(request: Request, env: ServerEnvironment =
         return respond({ data: await generateInterviewFollowUp(provider, input.session, input.answer) });
       case "interview-report":
         return respond({ data: await generateInterviewReport(provider, input.session) });
+      case "fun-practice-create":
+        return respond({
+          data: await generateFunPractice(provider, input.mode, input.concept, input.sourceText),
+        });
+      case "fun-practice-review":
+        return respond({
+          data: await reviewFunPractice(provider, input.task, input.answer, input.turn),
+        });
     }
   } catch (error) {
     if (error instanceof ProviderError) return respond({ error: error.message }, error.status);
