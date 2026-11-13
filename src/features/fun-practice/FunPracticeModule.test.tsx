@@ -87,6 +87,39 @@ describe("fun practice demos", () => {
     ).toBeInTheDocument();
   });
 
+  it("lets the learner retry a partial team explanation", async () => {
+    const user = userEvent.setup();
+    render(<FunPracticeModule canUseLive={false} />);
+
+    await user.click(screen.getByRole("tab", { name: /Rescue the team/i }));
+    await user.click(
+      screen.getByRole("button", { name: /Enter the incident: Forever Fresh Pricing/i }),
+    );
+    await user.click(screen.getByRole("button", { name: /Compare the source price/i }));
+    await user.click(screen.getByRole("button", { name: /Next decision/i }));
+    await user.click(screen.getByRole("button", { name: /Use a one-minute expiry/i }));
+    await user.click(screen.getByRole("button", { name: /Explain the trade-off/i }));
+
+    const explanation = screen.getByRole("textbox", { name: "Explain your team decision" });
+    await user.type(
+      explanation,
+      "A one-minute expiry keeps the cached copy from staying stale.",
+    );
+    await user.click(screen.getByRole("button", { name: "Submit explanation" }));
+
+    expect(screen.getByText("One more round")).toBeInTheDocument();
+    expect(explanation).toBeEnabled();
+
+    await user.type(
+      explanation,
+      "The source changes while the cached copy stays old. A one-minute expiry keeps data fresh enough without refreshing every request.",
+    );
+    expect(screen.getByRole("button", { name: "Submit explanation" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Submit explanation" }));
+
+    expect(screen.getByText("Teaching complete")).toBeInTheDocument();
+  });
+
   it("uses the selected case rubric for a later team incident", async () => {
     const user = userEvent.setup();
     render(<FunPracticeModule canUseLive={false} />);

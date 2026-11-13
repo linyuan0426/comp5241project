@@ -606,7 +606,7 @@ export default function FunPracticeModule({ bundle, canUseLive, onSignIn }: Prop
               </div>
               <textarea
                 aria-label="Explain your team decision"
-                disabled={busy || Boolean(currentReview)}
+                disabled={busy || session.status !== "in-progress"}
                 maxLength={2000}
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder="Type your reply to the group…"
@@ -615,7 +615,7 @@ export default function FunPracticeModule({ bundle, canUseLive, onSignIn }: Prop
               />
               <button
                 className="fun-qq-send"
-                disabled={busy || draft.trim().length === 0 || Boolean(currentReview)}
+                disabled={busy || session.status !== "in-progress" || draft.trim().length === 0}
                 onClick={() => void submitAnswer()}
                 type="button"
               >

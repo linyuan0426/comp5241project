@@ -1394,7 +1394,7 @@
   white-space: nowrap;
 }
 
-.fun-chat-poll-options button > span {
+.fun-chat-poll-options button > span:first-child {
   display: grid;
   width: 28px;
   height: 28px;
