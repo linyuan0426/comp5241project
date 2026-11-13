@@ -34,7 +34,7 @@ const quizQuestionSchema = z.object({
     .optional(),
 });
 
-const learningStateSchema = z.object({
+export const learningStateSchema = z.object({
   version: z.literal(1),
   document: z.object({
     name: z.string().min(1),

@@ -29,9 +29,20 @@ import type { InterviewTask } from "./features/interview/types";
 import WorkspaceModule from "./features/workspace/WorkspaceModule";
 import KnowledgeQuest from "./features/learning/KnowledgeQuest";
 import { newQuestProgress } from "./features/learning/quest-data";
+import CourseLibrary from "./features/learning/CourseLibrary";
 import DocumentReview from "./features/learning/DocumentReview";
 import ScenarioChallenge from "./features/learning/ScenarioChallenge";
 import { generateLearningBundle, recognizePageImages } from "./lib/ai";
+import {
+  addLibraryCourse,
+  LibraryConflictError,
+  listLibrary,
+  openLibraryCourse,
+  removeLibraryCourse,
+  updateLibraryCourse,
+  type LibraryCourse,
+  type LibraryEntry,
+} from "./lib/course-library";
 import { LanguageSwitch } from "./lib/i18n";
 import { downloadCourseFile, uploadCourseFile } from "./lib/supabase";
 import { countDocumentCharacters, DOCUMENT_LIMITS, joinDocumentPages } from "./lib/document";
@@ -61,7 +72,7 @@ const STEPS: Array<{ id: Step; label: string; icon: typeof UploadCloud }> = [
   { id: "progress", label: "Progress", icon: Target },
 ];
 
-type WorkspaceSection = "learning" | "fun" | "interview" | "workspace" | "challenge" | "task-interview";
+type WorkspaceSection = "library" | "learning" | "fun" | "interview" | "workspace" | "challenge" | "task-interview";
 
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
@@ -373,7 +384,7 @@ type ProgressViewProps = {
   onReviewPlan: () => void;
   onReviewQuiz: () => void;
   onReviewQuest: () => void;
-  onReset: () => void;
+  onReset?: () => void;
 };
 
 function ProgressView({
@@ -508,7 +519,7 @@ function ProgressView({
         </section>
       </div>
 
-      <section className="reset-row">
+      {onReset ? <section className="reset-row">
         <div>
           <strong>Start a fresh demo</strong>
           <p>This clears the current document, plan, quiz answers, and progress.</p>
@@ -517,13 +528,14 @@ function ProgressView({
           <RotateCcw size={17} />
           Reset demo
         </button>
-      </section>
+      </section> : null}
     </div>
   );
 }
 
 export default function App({ account }: { account?: AccountControls }) {
   const storage = useProgressStorage();
+  const userId = account?.userId;
   const [section, setSection] = useState<WorkspaceSection>(() => {
     const hash = window.location.hash;
     if (hash === "#workspace") return "workspace";
@@ -533,12 +545,20 @@ export default function App({ account }: { account?: AccountControls }) {
     return hash === "#fun" ? "fun" : "learning";
   });
   const [taskBrief, setTaskBrief] = useState(() => loadTaskBrief(storage));
-  const [learning, setLearning] = useState<LearningState | null>(() => loadLearningState(storage));
+  const [learning, setLearning] = useState<LearningState | null>(() => userId ? null : loadLearningState(storage));
   const latestLearning = useRef(learning);
   const [view, setView] = useState<Step>(() => learning?.currentStep ?? "upload");
   const [draft, setDraft] = useState<ExtractedDocument | null>(null);
   const sourceFile = useRef<File | null>(null);
-  const [pendingCourseFile, setPendingCourseFile] = useState<File | null>(null);
+  const [library, setLibrary] = useState<LibraryEntry[] | null>(null);
+  const [libraryError, setLibraryError] = useState("");
+  const [progressError, setProgressError] = useState("");
+  const [progressConflict, setProgressConflict] = useState(false);
+  const blockedProgress = useRef(false);
+  const [savingProgress, setSavingProgress] = useState(false);
+  const selectedCourse = useRef<LibraryCourse | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const draftUpload = useRef<{ id: string; path?: string } | null>(null);
   const [busy, setBusy] = useState<"parse" | "generate" | "recognize" | "upload" | null>(null);
   const [recognizingPage, setRecognizingPage] = useState<number | null>(null);
   const [pageError, setPageError] = useState("");
@@ -553,7 +573,26 @@ export default function App({ account }: { account?: AccountControls }) {
   function commitLearning(next: LearningState) {
     latestLearning.current = next;
     setLearning(next);
-    saveLearningState(next, storage);
+    const course = selectedCourse.current;
+    if (!course) {
+      if (!userId) saveLearningState(next, storage);
+      return;
+    }
+    if (blockedProgress.current) return;
+    setSavingProgress(true);
+    saveQueue.current = saveQueue.current.then(async () => {
+      if (blockedProgress.current || selectedCourse.current !== course || latestLearning.current !== next) return;
+      try {
+        course.version = await updateLibraryCourse(course.id, course.version, { learning: next });
+        setProgressError("");
+      } catch (error) {
+        setProgressError(errorMessage(error));
+        blockedProgress.current = error instanceof LibraryConflictError;
+        setProgressConflict(blockedProgress.current);
+      }
+    }).finally(() => {
+      if (latestLearning.current === next) setSavingProgress(false);
+    });
   }
 
   function navigate(step: Step) {
@@ -590,17 +629,20 @@ export default function App({ account }: { account?: AccountControls }) {
     return false;
   }
 
+  async function extractCourseFile(file: File) {
+    const isPptx = /\.pptx$/i.test(file.name)
+      || file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    return isPptx ? (await import("./lib/pptx")).extractPptx(file) : extractPdf(file);
+  }
+
   async function processFile(file: File) {
     if (busy || !requireSignIn()) return;
     setBusy("parse");
     setPageError("");
     try {
-      const isPptx = /\.pptx$/i.test(file.name)
-        || file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-      const extracted = isPptx
-        ? await (await import("./lib/pptx")).extractPptx(file)
-        : await extractPdf(file);
+      const extracted = await extractCourseFile(file);
       sourceFile.current = file;
+      draftUpload.current = null;
       setDraft(extracted);
     } catch (error) {
       if (error instanceof PdfValidationError) {
@@ -628,6 +670,7 @@ export default function App({ account }: { account?: AccountControls }) {
       });
       const extracted = await extractPdf(file);
       sourceFile.current = file;
+      draftUpload.current = null;
       setDraft(extracted);
     } catch (error) {
       setPageError(
@@ -647,6 +690,120 @@ export default function App({ account }: { account?: AccountControls }) {
     if (file) void processFile(file);
   }
 
+  function showLearning(next: LearningState | null) {
+    latestLearning.current = next;
+    setLearning(next);
+    const index = next ? getNextQuestionIndex(next.bundle.quiz) : 0;
+    setQuizIndex(index === -1 ? next?.bundle.quiz.length ?? 0 : index);
+    setView(next?.currentStep ?? "upload");
+  }
+
+  async function ensureSavedCourse(document: ExtractedDocument) {
+    if (document.meta.filePath && selectedCourse.current?.file_path === document.meta.filePath) {
+      return selectedCourse.current;
+    }
+    const file = sourceFile.current;
+    if (!userId || !file) throw new Error("Choose a course file first.");
+    const upload = draftUpload.current ??= { id: crypto.randomUUID() };
+    upload.path ??= await uploadCourseFile(userId, file);
+    const course = await addLibraryCourse(upload.id, document.meta.name, upload.path, document.pages);
+    selectedCourse.current = course;
+    return course;
+  }
+
+  async function loadLibrary() {
+    if (!userId || busy) return;
+    switchSection("library");
+    setBusy("upload");
+    setLibraryError("");
+    try {
+      setLibrary(await listLibrary());
+    } catch (error) {
+      setLibraryError(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function openCourse(entry: LibraryEntry) {
+    if (busy || savingProgress) return;
+    if (progressError && !window.confirm("Discard unsaved course progress and open the saved version?")) return;
+    setBusy("parse");
+    setLibraryError("");
+    try {
+      await saveQueue.current;
+      const course = await openLibraryCourse(entry.id);
+      let reopened: ExtractedDocument | null = null;
+      if (!course.learning && course.file_path) {
+        const blob = await downloadCourseFile(course.file_path);
+        const extracted = await extractCourseFile(new File([blob], course.name, { type: blob.type }));
+        reopened = {
+          meta: { ...extracted.meta, filePath: course.file_path },
+          pages: extracted.pages.map((page, index) => ({ ...page, ...course.pages?.[index] })),
+        };
+      }
+      selectedCourse.current = course;
+      draftUpload.current = null;
+      sourceFile.current = null;
+      setDraft(reopened);
+      setPageError("");
+      setProgressError("");
+      blockedProgress.current = false;
+      setProgressConflict(false);
+      showLearning(course.learning);
+      switchSection("learning");
+    } catch (error) {
+      if (section === "library") setLibraryError(errorMessage(error));
+      else setProgressError(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteCourse(entry: LibraryEntry) {
+    if (busy || savingProgress || !window.confirm("Delete this course, its original file and its study progress?")) return;
+    setBusy("upload");
+    setLibraryError("");
+    try {
+      await saveQueue.current;
+      await removeLibraryCourse(entry);
+      setLibrary((current) => current?.filter((course) => course.id !== entry.id) ?? null);
+      if (selectedCourse.current?.id === entry.id) {
+        selectedCourse.current = null;
+        showLearning(null);
+        setDraft(null);
+        sourceFile.current = null;
+        draftUpload.current = null;
+        setProgressError("");
+        blockedProgress.current = false;
+        setProgressConflict(false);
+      }
+    } catch (error) {
+      setLibraryError(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveDraft() {
+    if (!draft || busy || !userId) return;
+    setBusy("upload");
+    setPageError("");
+    try {
+      await saveQueue.current;
+      const course = await ensureSavedCourse(draft);
+      if (draft.meta.filePath) {
+        course.version = await updateLibraryCourse(course.id, course.version, { pages: draft.pages });
+      }
+      setDraft((current) => current && { ...current, meta: { ...current.meta, filePath: course.file_path ?? undefined } });
+      setLibrary(null);
+    } catch (error) {
+      setPageError(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function requestGeneration() {
     if (!draft || busy || !requireSignIn()) return;
     void generateKit();
@@ -659,45 +816,35 @@ export default function App({ account }: { account?: AccountControls }) {
     setBusy("generate");
     setPageError("");
     try {
-      const bundle = await generateLearningBundle(joinDocumentPages(draft.pages));
-      let filePath: string | undefined;
-      const file = sourceFile.current;
-      if (account?.userId && file) {
-        try {
-          filePath = await uploadCourseFile(account.userId, file);
-        } catch {
-          // The learner can retry the file upload without regenerating the study kit.
-        }
+      await saveQueue.current;
+      const course = userId ? await ensureSavedCourse(draft) : null;
+      if (course?.learning) throw new Error("This course already has a study kit. Resume it from your library.");
+      if (course) setDraft({ ...draft, meta: { ...draft.meta, filePath: course.file_path ?? undefined } });
+      if (course && draft.meta.filePath) {
+        course.version = await updateLibraryCourse(course.id, course.version, { pages: draft.pages });
       }
+      const bundle = await generateLearningBundle(joinDocumentPages(draft.pages));
       const next: LearningState = {
         version: 1,
-        document: { ...draft.meta, characterCount, filePath },
+        document: { ...draft.meta, characterCount, filePath: course?.file_path ?? undefined },
         bundle,
         currentStep: "plan",
       };
-      commitLearning(next);
-      setPendingCourseFile(account?.userId && !filePath ? file : null);
+      if (course) {
+        course.version = await updateLibraryCourse(course.id, course.version, { learning: next });
+        course.learning = next;
+      } else {
+        saveLearningState(next, storage);
+      }
+      setProgressError("");
+      blockedProgress.current = false;
+      setProgressConflict(false);
+      draftUpload.current = null;
       sourceFile.current = null;
       setDraft(null);
-      setQuizIndex(0);
-      setView("plan");
+      showLearning(next);
     } catch (error) {
       setPageError(errorMessage(error));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function retryCourseUpload() {
-    if (busy || !account?.userId || !pendingCourseFile) return;
-    setBusy("upload");
-    try {
-      const filePath = await uploadCourseFile(account.userId, pendingCourseFile);
-      const current = latestLearning.current;
-      if (current) commitLearning({ ...current, document: { ...current.document, filePath } });
-      setPendingCourseFile(null);
-    } catch {
-      // Keep the original file available for another retry.
     } finally {
       setBusy(null);
     }
@@ -768,7 +915,6 @@ export default function App({ account }: { account?: AccountControls }) {
     clearLearningState(storage);
     latestLearning.current = null;
     setLearning(null);
-    setPendingCourseFile(null);
     sourceFile.current = null;
     setDraft(null);
     setPageError("");
@@ -778,9 +924,19 @@ export default function App({ account }: { account?: AccountControls }) {
   }
 
   function requestNewDocument() {
-    if (busy || !window.confirm("Generating from a new document will replace the current learning progress. Continue?")) {
+    if (busy || savingProgress || (!userId && !window.confirm("Generating from a new document will replace the current learning progress. Continue?"))) {
       return;
     }
+    if (userId && progressError && !window.confirm("Discard unsaved course progress?")) return;
+    switchSection("learning");
+    if (userId) {
+      selectedCourse.current = null;
+      setProgressError("");
+      blockedProgress.current = false;
+      setProgressConflict(false);
+      showLearning(null);
+    }
+    draftUpload.current = null;
     sourceFile.current = null;
     setDraft(null);
     setPageError("");
@@ -849,6 +1005,16 @@ export default function App({ account }: { account?: AccountControls }) {
 
         <nav className="main-nav" aria-label="Learning workflow">
           <p className="nav-label">Learning studio</p>
+          {userId ? (
+            <button aria-current={section === "library" ? "page" : undefined}
+              className={section === "library" ? "active" : ""}
+              disabled={busy !== null || savingProgress}
+              aria-label="My course library"
+              onClick={() => void loadLibrary()} type="button">
+              <span className="nav-icon"><BookOpen size={18} /></span>
+              <span>My course library</span>
+            </button>
+          ) : null}
           {steps.map((step, index) => {
             const Icon = step.icon;
             const available = step.id === "upload" || Boolean(learning);
@@ -861,14 +1027,17 @@ export default function App({ account }: { account?: AccountControls }) {
                 aria-current={section === "learning" && view === step.id ? "step" : undefined}
                 aria-label={step.label}
                 className={section === "learning" && view === step.id ? "active" : ""}
-                disabled={!available}
+                disabled={!available || Boolean(userId && busy)}
                 key={step.id}
                 onClick={() => {
-                  switchSection("learning");
                   if (step.id === "upload") {
                     if (learning) requestNewDocument();
-                    else setView("upload");
+                    else {
+                      switchSection("learning");
+                      setView("upload");
+                    }
                   } else {
+                    switchSection("learning");
                     navigate(step.id);
                   }
                 }}
@@ -947,6 +1116,7 @@ export default function App({ account }: { account?: AccountControls }) {
             <ChevronRight size={14} />
             <strong>
               {section === "learning" ? steps.find((step) => step.id === view)?.label
+                : section === "library" ? "My course library"
                 : section === "fun" ? "Fun Practice"
                 : inInterview ? interviewTask ? "Task Interview" : "Mock Interview"
                 : section === "challenge" ? "Scenario Challenge" : "Virtual Workspace"}
@@ -967,7 +1137,34 @@ export default function App({ account }: { account?: AccountControls }) {
         </header>
 
         <main className="main-content">
-          {section === "fun" ? (
+          {savingProgress ? <p role="status">Saving course progress…</p> : null}
+          {progressError ? (
+            <div className="page-error" role="alert">
+              <p>{progressError}</p>
+              {progressConflict ? (
+                <button className="text-button" disabled={busy !== null} onClick={() => {
+                  const course = selectedCourse.current;
+                  if (course) void openCourse(course);
+                }} type="button">Reload saved course</button>
+              ) : (
+                <button className="text-button" disabled={savingProgress} onClick={() => {
+                  if (latestLearning.current) commitLearning(latestLearning.current);
+                }} type="button">Retry saving progress</button>
+              )}
+            </div>
+          ) : null}
+          {section === "library" && userId ? (
+            <CourseLibrary
+              entries={library}
+              error={libraryError}
+              busy={busy !== null || savingProgress}
+              onUpload={requestNewDocument}
+              onReload={() => void loadLibrary()}
+              onOpen={(course) => void openCourse(course)}
+              onDelete={(course) => void deleteCourse(course)}
+              renderDownload={(path, name) => <CourseFileDownload path={path} name={name} />}
+            />
+          ) : section === "fun" ? (
             <Suspense fallback={<div className="panel">Loading practice…</div>}>
               <FunPracticeModule
                 bundle={learning?.bundle}
@@ -1021,7 +1218,7 @@ export default function App({ account }: { account?: AccountControls }) {
                 </p>
                 {account ? <p>
                   {account.userId
-                    ? "When you generate a study kit, your original file is saved privately to your account."
+                    ? "Save your original file privately now, or generate a study kit when you are ready."
                     : "Sign in before uploading to generate study kits and save your progress."}
                 </p> : null}
                 <div className="feature-pills">
@@ -1117,10 +1314,17 @@ export default function App({ account }: { account?: AccountControls }) {
                     <div className="document-ready-copy">
                       <span>{reviewedCharacters > 0 && !characterLimitExceeded ? "Ready to generate" : "Review required"}</span>
                       <strong>{draft.meta.name}</strong>
+                      {draft.meta.filePath ? <small role="status">File saved</small> : null}
                       <p>
                         {draft.meta.pageCount} pages · {reviewedCharacters.toLocaleString()} characters
                       </p>
                     </div>
+                    {userId ? (
+                      <button className="button secondary" disabled={busy !== null || characterLimitExceeded}
+                        onClick={() => void saveDraft()} type="button">
+                        {busy === "upload" ? "Saving…" : draft.meta.filePath ? "Save text changes" : "Save to library"}
+                      </button>
+                    ) : null}
                     <button
                       className="button primary"
                       disabled={busy !== null || !reviewedCharacters || characterLimitExceeded}
@@ -1162,18 +1366,6 @@ export default function App({ account }: { account?: AccountControls }) {
             </div>
           ) : null}
 
-          {view !== "upload" && pendingCourseFile ? (
-            <div className="page-error floating">
-              <CircleHelp size={19} />
-              <p role="status">
-                {busy === "upload" ? "Uploading the original course file…" : "The original course file could not be saved. Your study kit is ready."}
-              </p>
-              <button className="text-button" disabled={busy !== null} onClick={() => void retryCourseUpload()} type="button">
-                Retry file upload
-              </button>
-            </div>
-          ) : null}
-
           {view === "plan" && learning ? (
               <StagePlan
                 bundle={learning.bundle}
@@ -1185,6 +1377,7 @@ export default function App({ account }: { account?: AccountControls }) {
 
           {view === "quest" && quest && learning ? (
             <KnowledgeQuest
+              key={selectedCourse.current?.id}
               quest={quest}
               progress={learning.questProgress ?? newQuestProgress(quest)}
               onAttempt={recordQuestAttempt}
@@ -1213,7 +1406,7 @@ export default function App({ account }: { account?: AccountControls }) {
           {view === "progress" && learning ? (
             <ProgressView
               learning={learning}
-              onReset={resetDemo}
+              onReset={userId ? undefined : resetDemo}
               onReviewPlan={() => navigate("plan")}
               onReviewQuiz={openQuiz}
               onReviewQuest={() => navigate("quest")}

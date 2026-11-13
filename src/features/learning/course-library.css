@@ -1,0 +1,51 @@
+.course-library,
+.course-library-list {
+  display: grid;
+  gap: 16px;
+}
+
+.course-library-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.course-library-header,
+.course-library-entry,
+.course-library-empty {
+  padding: 20px;
+}
+
+.course-library-header,
+.course-library-entry,
+.course-library-title,
+.course-library-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.course-library-header,
+.course-library-entry {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.course-library-title > svg {
+  flex-shrink: 0;
+}
+
+.course-library-title h2 {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.course-library h1,
+.course-library h2,
+.course-library p {
+  margin: 0;
+}
+
+.course-library-actions {
+  flex-wrap: wrap;
+}

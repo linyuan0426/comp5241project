@@ -7,7 +7,7 @@ export const supabase = url && key && !url.includes("YOUR_PROJECT_REF") && !key.
   ? createClient(url, key)
   : null;
 
-const courseFilesBucket = "pathwise-course-files";
+export const courseFilesBucket = "pathwise-course-files";
 
 export async function uploadCourseFile(userId: string, file: File) {
   if (!supabase) throw new Error("Course file storage is unavailable.");

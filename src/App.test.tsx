@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { loadLearningState, saveLearningState } from "./lib/storage";
+import { saveLearningState } from "./lib/storage";
 import { makeBundle, makeQuest } from "./test/fixtures";
 
 const { extractPdfMock, generateBundleMock, recognizeImagesMock, uploadCourseFileMock } = vi.hoisted(() => ({
@@ -26,6 +26,16 @@ vi.mock("./lib/supabase", () => ({
   uploadCourseFile: uploadCourseFileMock,
   downloadCourseFile: vi.fn(),
 }));
+
+const library = vi.hoisted(() => ({
+  addLibraryCourse: vi.fn(),
+  listLibrary: vi.fn(),
+  openLibraryCourse: vi.fn(),
+  removeLibraryCourse: vi.fn(),
+  updateLibraryCourse: vi.fn(),
+}));
+
+vi.mock("./lib/course-library", () => ({ ...library, LibraryConflictError: class extends Error {} }));
 
 describe("learning demo workflow", () => {
   beforeEach(() => {
@@ -64,24 +74,56 @@ describe("learning demo workflow", () => {
     expect(extractPdfMock).not.toHaveBeenCalled();
   });
 
-  it("retries storage without regenerating the study kit or reverting learning changes", async () => {
+  it("saves files before generating and resumes each course with its own progress", async () => {
     const user = userEvent.setup();
-    let finishUpload!: (path: string) => void;
-    const retry = new Promise<string>((resolve) => { finishUpload = resolve; });
-    uploadCourseFileMock.mockRejectedValueOnce(new Error("Unavailable")).mockReturnValueOnce(retry);
-    render(<App account={{ userId: "learner", open: vi.fn() }} />);
+    type Course = import("./lib/course-library").LibraryCourse;
+    const courses = new Map<string, Course>();
+    uploadCourseFileMock.mockResolvedValueOnce("learner/first.pdf").mockResolvedValueOnce("learner/second.pdf");
+    library.addLibraryCourse.mockImplementation(async (id, name, path, pages) => {
+      const course: Course = {
+        id, name, file_path: path, page_count: pages.length, created_at: "2026-11-13",
+        has_pack: false, pages, learning: null, version: 1,
+      };
+      courses.set(id, structuredClone(course));
+      return course;
+    });
+    library.updateLibraryCourse.mockImplementation(async (id, version, { learning }) => {
+      const course = courses.get(id)!;
+      expect(version).toBe(course.version);
+      if (learning) {
+        course.learning = structuredClone(learning);
+        course.has_pack = true;
+      }
+      return ++course.version;
+    });
+    library.listLibrary.mockImplementation(async () => Array.from(courses.values()));
+    library.openLibraryCourse.mockImplementation(async (id) => structuredClone(courses.get(id)));
+    const account = { userId: "learner", open: vi.fn() };
+    const firstRender = render(<App account={account} />);
 
     await user.click(screen.getByRole("button", { name: "Load sample" }));
-    await user.click(await screen.findByRole("button", { name: "Generate study kit" }));
-    await user.click(await screen.findByRole("button", { name: "Retry file upload" }));
-    await user.click(screen.getByRole("button", { name: "Summarize source control intent" }));
-    finishUpload("learner/course.pdf");
+    await user.click(await screen.findByRole("button", { name: "Save to library" }));
+    await screen.findByRole("button", { name: "Save text changes" });
+    expect(generateBundleMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Generate study kit" }));
+    await user.click(await screen.findByRole("button", { name: "Summarize source control intent" }));
+    await waitFor(() => expect(Array.from(courses.values())[0].learning?.bundle.plan[0].tasks[0].completed).toBe(true));
 
-    await waitFor(() => expect(loadLearningState()?.document.filePath).toBe("learner/course.pdf"));
-    expect(loadLearningState()?.bundle.plan[0].tasks[0].completed).toBe(true);
-    expect(generateBundleMock).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Upload" }));
+    await user.click(screen.getByRole("button", { name: "Load sample" }));
+    await user.click(await screen.findByRole("button", { name: "Generate study kit" }));
+    await waitFor(() => expect(Array.from(courses.values())[1].has_pack).toBe(true));
+    expect(Array.from(courses.values())[1].learning?.bundle.plan[0].tasks[0].completed).toBe(false);
     expect(uploadCourseFileMock).toHaveBeenCalledTimes(2);
-    expect(uploadCourseFileMock.mock.calls[1][1]).toBe(uploadCourseFileMock.mock.calls[0][1]);
+    expect(confirm).not.toHaveBeenCalled();
+
+    firstRender.unmount();
+    render(<App account={account} />);
+    await user.click(screen.getByRole("button", { name: "My course library" }));
+    const resume = await screen.findAllByRole("button", { name: "Resume learning" });
+    expect(resume).toHaveLength(2);
+    await user.click(resume[0]);
+    expect(await screen.findByRole("button", { name: "Summarize source control intent" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("completes the full plan and quiz workflow, then restores progress", async () => {
