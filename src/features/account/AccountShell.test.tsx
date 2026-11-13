@@ -49,7 +49,7 @@ it("registers with the app redirect and returns to sign-in when email confirmati
     options: { emailRedirectTo: `${window.location.origin}/` },
   });
   expect(await dialog.findByRole("status")).toHaveTextContent("confirmation link");
-  expect(dialog.getByRole("heading")).toHaveTextContent("Sign in to Pathwise");
+  expect(dialog.getByRole("heading")).toHaveTextContent("Student sign in");
   expect(dialog.getByLabelText("Password")).toHaveValue("");
 });
 
