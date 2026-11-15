@@ -6,4 +6,4 @@
 - teather：teacher123@123.com pw：123456789
 - [Demo Video (6 min 20 sec)]https://youtu.be/ZWiO5SJSatw
 - [Final Report](./group3_report.pdf)
-- [Presentation Slides_PDF](./5241slides.pdf)
+- [Presentation Slides_PDF](./group3_slides.pdf)
