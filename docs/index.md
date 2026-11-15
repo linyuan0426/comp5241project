@@ -5,6 +5,6 @@
 - student：123456789@123.com pw：123456789
 - teather：teacher123@123.com pw：123456789
 - [Demo Video (6 min 20 sec)]https://youtu.be/ZWiO5SJSatw
-- [Final Report](./5241report.word)
+- [Final Report](./5241report.docx)
 - [Presentation Slides](./5241slides.pptx)
--[Presentation Slides_PDF](./5241slides.pdf)
+- [Presentation Slides_PDF](./5241slides.pdf)
